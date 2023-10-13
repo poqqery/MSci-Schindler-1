@@ -229,27 +229,6 @@ class excitation_solver:
         # To solve at each pair momentum, p, all the FBZ momenta, k, need to be
         # summed over (pain, I know—it probably gets worse with trions)
         
-        # # Iterate over each p
-        # for i in range(self._N):
-        #     h = 0.j
-        #     # Iterate over each k
-        #     for j in range(self._N):
-        #         # See page 30 of the paper for clarification on the process being
-        #         # performed here
-        #         U_k = reduced_eigenvectors[j]
-        #         P_k = U_k @ np.conjugate(U_k.T)
-        #         # The modulo wraps it back into an FBZ wavevector (whose related
-        #         # eigenvectors have already been calculated)
-        #         U_p_plus_k = reduced_eigenvectors[(i + j) % self._N]
-        #         P_p_plus_k = U_p_plus_k @ np.conjugate(U_p_plus_k.T)
-            
-        #         # Hadamard product of one projector matrix with the transpose of
-        #         # the other
-        #         h += P_p_plus_k * P_k.T
-                
-        #     energies = LA.eigvalsh(h / self._N)
-        #     charge_2_energies.append(self._mod_U * (self._epsilon - energies))
-        
         # Iterate over each p
         for i in range(self._N):
             h = 0.j
