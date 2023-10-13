@@ -49,7 +49,7 @@ class excitation_solver:
             Function taking a wavevector, k, as input. Generally returns a
             matrix. Assumed to be Hermitian (it damn well better be).
         lattice_constant : float
-            Lattice spacing from unit cell to another.
+            Lattice spacing from one unit cell to another.
         N : int
             Number of unit cells. This automatically determines the valid
             wavevectors to sample at: the ones that satisfy periodic boundary
@@ -74,29 +74,6 @@ class excitation_solver:
         
         # Find the flat bands, if any exist
         self._flat_bands = self.identify_flat_bands()
-        
-    def eigen_solver(self, k):
-        """
-        Solves for the eigenvalues and eigenvectors of the given Hamiltonian
-        at the specified wavevector, k.
-
-        Parameters
-        ----------
-        k : float
-            Wavevector to solve at.
-
-        Returns
-        -------
-        eigenvalues : ndarray of float
-            Eigenvalues (energies).
-        eigenvectors : ndarray of complex128
-            Eigenvectors/states.
-
-        """
-        
-        eigenvalues, eigenvectors = LA.eigh(self._hamiltonian(k))
-        
-        return eigenvalues, eigenvectors
         
     def check_band_degeneracy(self, flat_bands):
         
@@ -150,7 +127,7 @@ class excitation_solver:
         # Fills with the indices of bands that are flat (enough).
         flat_bands = []
         
-        for i in range(self._eigenvalues.shape[1]):
+        for i in range(self._N_orb):
             energies = self._eigenvalues[:,i]
             first_value = energies[0]
             # Check if all the energies are suitably close to the first value
@@ -194,14 +171,15 @@ class excitation_solver:
         # Check the bands all lie at the same energy. Terminate otherwise.
         self.check_band_degeneracy(flat_bands)
         # Epsilon from the UPC can now be assigned
-        self._epsilon = len(flat_bands) / self._eigenvalues.shape[1]
+        self._N_f = len(flat_bands)
+        self._epsilon = self._N_f / self._N_orb
         
         charge_1_energies = []
         # Remove the columns of eigenvectors that do not correspond to the flat bands
         reduced_eigenvectors = self._eigenvectors[:,:,flat_bands]
         
         for i in range(self._N):
-            # Find the appropriate matrix of
+            # Find the appropriate matrix of eigenvectors for the given k
             U = reduced_eigenvectors[i]
             # Calculate the matrix, R
             R = 0.5 * self._mod_U * self._epsilon * np.einsum("am,an->mn", np.conjugate(U), U)
@@ -241,7 +219,8 @@ class excitation_solver:
         # Check the bands all lie at the same energy. Terminate otherwise.
         self.check_band_degeneracy(flat_bands)
         # Epsilon from the UPC can now be assigned
-        self._epsilon = len(flat_bands) / self._eigenvalues.shape[1]
+        self._N_f = len(flat_bands)
+        self._epsilon = self._N_f / self._N_orb
         
         charge_2_energies = []
         # Remove the columns of eigenvectors that do not correspond to the flat bands
@@ -249,6 +228,27 @@ class excitation_solver:
         
         # To solve at each pair momentum, p, all the FBZ momenta, k, need to be
         # summed over (pain, I know—it probably gets worse with trions)
+        
+        # # Iterate over each p
+        # for i in range(self._N):
+        #     h = 0.j
+        #     # Iterate over each k
+        #     for j in range(self._N):
+        #         # See page 30 of the paper for clarification on the process being
+        #         # performed here
+        #         U_k = reduced_eigenvectors[j]
+        #         P_k = U_k @ np.conjugate(U_k.T)
+        #         # The modulo wraps it back into an FBZ wavevector (whose related
+        #         # eigenvectors have already been calculated)
+        #         U_p_plus_k = reduced_eigenvectors[(i + j) % self._N]
+        #         P_p_plus_k = U_p_plus_k @ np.conjugate(U_p_plus_k.T)
+            
+        #         # Hadamard product of one projector matrix with the transpose of
+        #         # the other
+        #         h += P_p_plus_k * P_k.T
+                
+        #     energies = LA.eigvalsh(h / self._N)
+        #     charge_2_energies.append(self._mod_U * (self._epsilon - energies))
         
         # Iterate over each p
         for i in range(self._N):
@@ -261,9 +261,15 @@ class excitation_solver:
                 P_k = U_k @ np.conjugate(U_k.T)
                 # The modulo wraps it back into an FBZ wavevector (whose related
                 # eigenvectors have already been calculated)
-                U_p_plus_k = reduced_eigenvectors[(i + j) % self._N]
+                # Different cases for j corresponding to positive and negative
+                # wavevectors are needed because the smallest wavevectors
+                # correspond to j around N/2, not 0
+                if (j < (self._N - 1)/2):
+                    U_p_plus_k = reduced_eigenvectors[(i - (self._N // 2 - j)) % self._N]
+                else:
+                    U_p_plus_k = reduced_eigenvectors[(i + (self._N // 2 + j)) % self._N]
+                    
                 P_p_plus_k = U_p_plus_k @ np.conjugate(U_p_plus_k.T)
-            
                 h += P_p_plus_k * P_k.T
                 
             energies = LA.eigvalsh(h / self._N)
@@ -275,7 +281,10 @@ class excitation_solver:
         for i in range(self._charge_2_energies.shape[1]):
             plt.plot(self._k_samples * self._a, self._charge_2_energies[:,i], ".")
             
+        plt.plot(np.array([-np.pi, np.pi]), self._mod_U*self._epsilon*np.ones(2), "--", color="black", label=r"$\epsilon |U|$")
+            
         plt.grid(True)
+        plt.legend()
         plt.title("Excitation Spectra", fontsize=18)
         plt.xlabel(r"$pa$")
         plt.ylabel("Energy")
@@ -320,7 +329,7 @@ def dimerized_SSH(k):
     """
     
     sigma_2 = np.array([[0., -1.j], [1.j, 0.]])
-    sigma_3 = np.array([[1., 0.], [0., -1.]])
+    sigma_3 = np.array([[1., 0.], [0., -1.]], dtype="complex128")
     
     h = np.sin(k) * sigma_2 + np.cos(k) * sigma_3
     
