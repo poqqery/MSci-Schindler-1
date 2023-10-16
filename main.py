@@ -268,6 +268,37 @@ class excitation_solver:
         plt.xlabel(r"$pa$")
         plt.ylabel("Energy")
         plt.show()
+        
+        
+        
+    def check_UPC(self, flat_bands):
+        #check that the uniform pairing condition holds (1D) using equation A16
+        
+        self.check_band_degeneracy(flat_bands)
+        # Epsilon from the UPC can now be assigned
+        self._epsilon = len(flat_bands) / self._eigenvalues.shape[1]
+        # Remove the columns of eigenvectors that do not correspond to the flat bands
+        reduced_eigenvectors = self._eigenvectors[:,:,flat_bands]
+        
+        p_aa=0.j
+        for j in range(self._N):
+            
+            U_k = reduced_eigenvectors[j]
+            P_k = U_k @ np.conjugate(U_k.T)
+            
+            p_aa+=P_k
+            
+        p_aa/=self._N
+        eps_values=[]
+        
+        for i in range(P_k.shape[0]):
+            eps_values.append(p_aa[i,i])
+            
+        if np.allclose(self._epsilon, eps_values, rtol=1e-4, atol=1e-7):
+            print('the UPC is satisfied')
+        else:
+            print('the UPC is not satisfied')
+    
     
     def plot_band_structure(self):
         """
