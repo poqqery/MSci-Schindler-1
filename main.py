@@ -314,5 +314,13 @@ def dimerized_SSH(k):
     
     return h
 
+def zig_zag(k):
+    #assume hopping term is 1
+    sigma_1=np.array([[0. , 1.],[1. , 0.]])
+    sigma_2 = np.array([[0., -1.j], [1.j, 0.]])
+    
+    h=np.sqrt(2)*np.cos(k)*np.array([[ 1. , 0.],[ 0., 0.]])+(1+np.cos(k))*sigma_1+np.sin(k)*sigma_2
+    
+    return h
 
 test = excitation_solver(1., dimerized_SSH, 1.)
