@@ -34,6 +34,9 @@ class NonDegenerateFlatBandsException(Exception):
     "Raised if chosen flat bands to analyze excitation spectra of are not degenerate."
     pass
 
+class UPCFailedException(Exception):
+    "Raised if the given model does not obey the uniform pairing condition (UPC)."
+
 class excitation_solver:
     def __init__(self, interaction_strength, hamiltonian, lattice_constant, N=75):
         """
@@ -76,6 +79,26 @@ class excitation_solver:
         self._flat_bands = self.identify_flat_bands()
         
     def check_band_degeneracy(self, flat_bands):
+        """
+        Checks that the specified bands to calculate excitation spectra with
+        are degenerate amongst each other. Terminates if the bands are not
+        degenerate.
+
+        Parameters
+        ----------
+        flat_bands : list of ints
+            Indices of bands to analyze.
+
+        Raises
+        ------
+        NonDegenerateFlatBandsException
+            Raised if the given bands are not degenerate.
+
+        Returns
+        -------
+        None.
+
+        """
         
         # First check that the chosen flat bands to analyze do actually
         # all lie at the same energy
@@ -87,6 +110,37 @@ class excitation_solver:
         else:
             # Terminate otherwise
             raise NonDegenerateFlatBandsException
+            
+    def check_UPC(self, reduced_eigenvectors):
+        """
+        Checks that the given model satisfies the uniform pairing condition
+        (UPC). Terminates if it does not.
+
+        Parameters
+        ----------
+        reduced_eigenvectors : ndarray of complex128
+            Eigenvectors associated with the given flat bands to analyze.
+
+        Raises
+        ------
+        UPCFailedException
+            Raised if the model does not satisfy the UPC.
+
+        Returns
+        -------
+        None.
+
+        """
+        
+        p = np.einsum("ijk,ilk->jl", reduced_eigenvectors, np.conjugate(reduced_eigenvectors)) / self._N
+        
+        if np.allclose(self._epsilon, np.diag(p), rtol=1e-4, atol=1e-7):
+            # Continue; the model satisfies the UPC and is valid for analysis
+            pass
+        
+        else:
+            # Terminate otherwise
+            raise UPCFailedException
         
     def identify_flat_bands(self):
         """
@@ -177,6 +231,8 @@ class excitation_solver:
         charge_1_energies = []
         # Remove the columns of eigenvectors that do not correspond to the flat bands
         reduced_eigenvectors = self._eigenvectors[:,:,flat_bands]
+        # Check the model obeys the UPC. Terminate otherwise.
+        self.check_UPC(reduced_eigenvectors)
         
         for i in range(self._N):
             # Find the appropriate matrix of eigenvectors for the given k
@@ -225,6 +281,8 @@ class excitation_solver:
         charge_2_energies = []
         # Remove the columns of eigenvectors that do not correspond to the flat bands
         reduced_eigenvectors = self._eigenvectors[:,:,flat_bands]
+        # Check the model obeys the UPC. Terminate otherwise.
+        self.check_UPC(reduced_eigenvectors)
         
         # To solve at each pair momentum, p, all the FBZ momenta, k, need to be
         # summed over (pain, I know—it probably gets worse with trions)
@@ -268,37 +326,6 @@ class excitation_solver:
         plt.xlabel(r"$pa$")
         plt.ylabel("Energy")
         plt.show()
-        
-        
-        
-    def check_UPC(self, flat_bands):
-        #check that the uniform pairing condition holds (1D) using equation A16
-        
-        self.check_band_degeneracy(flat_bands)
-        # Epsilon from the UPC can now be assigned
-        self._epsilon = len(flat_bands) / self._eigenvalues.shape[1]
-        # Remove the columns of eigenvectors that do not correspond to the flat bands
-        reduced_eigenvectors = self._eigenvectors[:,:,flat_bands]
-        
-        p_aa=0.j
-        for j in range(self._N):
-            
-            U_k = reduced_eigenvectors[j]
-            P_k = U_k @ np.conjugate(U_k.T)
-            
-            p_aa+=P_k
-            
-        p_aa/=self._N
-        eps_values=[]
-        
-        for i in range(P_k.shape[0]):
-            eps_values.append(p_aa[i,i])
-            
-        if np.allclose(self._epsilon, eps_values, rtol=1e-4, atol=1e-7):
-            print('the UPC is satisfied')
-        else:
-            print('the UPC is not satisfied')
-    
     
     def plot_band_structure(self):
         """
@@ -353,5 +380,6 @@ def zig_zag(k):
     h=np.sqrt(2)*np.cos(k)*np.array([[ 1. , 0.],[ 0., 0.]])+(1+np.cos(k))*sigma_1+np.sin(k)*sigma_2
     
     return h
+
 
 test = excitation_solver(1., dimerized_SSH, 1.)
