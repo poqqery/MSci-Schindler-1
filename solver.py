@@ -166,7 +166,7 @@ class excitation_solver:
         # Number of orbitals/bands = rank of the Hamiltonian matrix
         # So, just evaluate it at k = 0 to see the dimensionality of the matrix
         self._N_orb = self._hamiltonian(0., 1).shape[0]
-        # 2 spins, N wavevectors, num_bands eigenvalues
+        # 2 spins, N wavevectors, N_orb eigenvalues
         self._eigenvalues = np.zeros((2, self._N, self._N_orb))
         # 2 spins, N wavevectors, (N_orb x N_orb) eigenvector matrix
         self._eigenvectors = np.zeros((2, self._N, self._N_orb, self._N_orb), dtype="complex128")
@@ -342,6 +342,22 @@ class excitation_solver:
         plt.show()
         
     def trion_3_electrons_spectra(self, flat_bands, spins):
+        """
+        Calculates the excitaion spectra of a trion composed of three
+        electrons. Highly recommended to keep N low (<= 20).
+
+        Parameters
+        ----------
+        flat_bands : list of ints
+            Indices of the flat bands to analyze.
+        spins : array or similar of ints
+            Spins of the three electrons. 0 for up and 1 for down.
+
+        Returns
+        -------
+        None.
+
+        """
         
         # Check the bands all lie at the same energy. Terminate otherwise.
         self.check_band_degeneracy(flat_bands)
