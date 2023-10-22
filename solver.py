@@ -381,7 +381,6 @@ class excitation_solver:
         
         # Iterate over each p
         for p in range(self._N):
-            #R = (1.5 + 0.j)*self._epsilon*self._mod_U * np.identity(R_dimensionality)
             R = np.zeros((R_dimensionality, R_dimensionality), dtype="complex128")
             
             # (I honestly can't see any way right now to avoid 10 for loops...)
@@ -418,7 +417,6 @@ class excitation_solver:
                                                             np.conj(reduced_eigenvectors[s[1],(-k_1_prime)%self._N,:,n_prime]) *\
                                                             reduced_eigenvectors[s[1],(-k_1)%self._N,:,n]) * s[0] * s[1]
                                                             
-                                                    #R[R_row_index,R_column_index] += (self._mod_U / self._N) * R_sum
                                                     R[R_row_index,R_column_index] += R_sum / self._N
                                                     
                                                     R_column_index += 1
@@ -440,6 +438,104 @@ class excitation_solver:
         plt.grid(True)
         plt.legend()
         plt.title("Trion (3 Electrons) Excitation Spectra", fontsize=18)
+        plt.xlabel(r"$pa$")
+        plt.ylabel("Energy")
+        plt.show()
+        
+    def trion_electrons_holes_spectra(self, flat_bands, spins):
+        """
+        Calculates the excitation spectra of a trion formed of electrons and
+        holes. This function defines the first particle as an electron and
+        the second two as holes. A trion of two electrons and one hole
+        should give the same spectrum. Keep N small (<= 20).
+
+        Parameters
+        ----------
+        flat_bands : list of ints
+            Indices of the flat bands to analyze.
+        spins : array or similar of ints
+            Spins of the three electrons. 0 for up and 1 for down.
+
+        Returns
+        -------
+        None.
+
+        """
+        
+        # Check the bands all lie at the same energy. Terminate otherwise.
+        self.check_band_degeneracy(flat_bands)
+        # Epsilon from the UPC can now be assigned
+        self._N_f = len(flat_bands)
+        self._epsilon = self._N_f / self._N_orb
+        
+        # Remove the columns of eigenvectors that do not correspond to the flat bands
+        reduced_eigenvectors = self._eigenvectors[:,:,:,flat_bands]
+        # Check the model obeys the UPC. Terminate otherwise.
+        self.check_UPC(reduced_eigenvectors)
+        
+        # Define the three spins (0 maps to 1, 1 maps to -1 for up and down respectively)
+        # sigma = index 0; sigma prime = index 1; sigma double prime = index 2
+        s = -2*np.array(spins) + 1
+        
+        # Number of rows and columns in R
+        R_dimensionality = self._N**2 * self._N_f**3
+        
+        self._trion_electrons_holes_energies = np.zeros((self._N, R_dimensionality))
+        
+        # Iterate over each p
+        for p in range(self._N):
+            R = np.zeros((R_dimensionality, R_dimensionality), dtype="complex128")
+            R_row_index = 0
+            for m_prime in range(self._N_f):
+                for n_prime in range(self._N_f):
+                    for l_prime in range(self._N_f):
+                        for k_1_prime in range(self._N):
+                            for k_2_prime in range(self._N):
+                                # Counts the current column of R being filled in
+                                R_column_index = 0
+                                for m in range(self._N_f):
+                                    for n in range(self._N_f):
+                                        for l in range(self._N_f):
+                                            for k_1 in range(self._N):
+                                                for k_2 in range(self._N):
+                                                    R_sum = 0.j
+                                                    if ((k_1_prime+k_2_prime == k_1+k_2) and (m_prime == m)):
+                                                        R_sum += sum(reduced_eigenvectors[s[1],k_1_prime,:,n_prime] *\
+                                                            np.conj(reduced_eigenvectors[s[1],k_1,:,n]) *\
+                                                            reduced_eigenvectors[s[2],k_2_prime,:,l_prime] *\
+                                                            np.conj(reduced_eigenvectors[s[2],k_2,:,l])) * s[1] * s[2]
+                                                    
+                                                    if ((k_1_prime == k_1) and (n_prime == n)):
+                                                        R_sum -= sum(np.conj(reduced_eigenvectors[s[0],(p+k_1+k_2_prime)%self._N,:,m_prime]) *\
+                                                            reduced_eigenvectors[s[0],(p+k_1+k_2)%self._N,:,m] *\
+                                                            reduced_eigenvectors[s[2],k_2_prime,:,l_prime] *\
+                                                            np.conj(reduced_eigenvectors[s[2],k_2,:,l])) * s[0] * s[2]
+                                                            
+                                                    if ((k_2_prime == k_2) and (l_prime == l)):
+                                                        R_sum -= sum(np.conj(reduced_eigenvectors[s[0],(p+k_1_prime+k_2)%self._N,:,m_prime]) *\
+                                                            reduced_eigenvectors[s[0],(p+k_1+k_2)%self._N,:,m] *\
+                                                            reduced_eigenvectors[s[1],k_1_prime,:,n_prime] *\
+                                                            np.conj(reduced_eigenvectors[s[1],k_1,:,n])) * s[0] * s[1]
+                                                            
+                                                    R[R_row_index,R_column_index] += R_sum / self._N
+                                                    
+                                                    R_column_index += 1
+                                
+                                R_row_index += 1
+                                
+            energies = LA.eigvalsh(R)
+            self._trion_electrons_holes_energies[p] += self._mod_U * (1.5*self._epsilon + energies)
+            
+        scaled_k = np.linspace(-np.pi, np.pi, self._N + 1)[:-1]
+        # Plot the excitation spectra
+        for i in range(R_dimensionality):
+            plt.plot(scaled_k, np.roll(self._trion_electrons_holes_energies[:,i], self._N // 2), ".", color="red")
+            
+        plt.plot(np.array([-np.pi, np.pi]), 1.5*self._mod_U*self._epsilon*np.ones(2), "--", color="black", label=r"$\frac{3}{2}\epsilon |U|$")
+            
+        plt.grid(True)
+        plt.legend()
+        plt.title("Trion (Mixed) Excitation Spectra", fontsize=18)
         plt.xlabel(r"$pa$")
         plt.ylabel("Energy")
         plt.show()
