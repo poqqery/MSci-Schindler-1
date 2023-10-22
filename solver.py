@@ -381,7 +381,8 @@ class excitation_solver:
         
         # Iterate over each p
         for p in range(self._N):
-            R = (1.5 + 0.j)*self._epsilon*self._mod_U * np.identity(R_dimensionality)
+            #R = (1.5 + 0.j)*self._epsilon*self._mod_U * np.identity(R_dimensionality)
+            R = np.zeros((R_dimensionality, R_dimensionality), dtype="complex128")
             
             # (I honestly can't see any way right now to avoid 10 for loops...)
             # Counts the current row of R being filled in
@@ -417,14 +418,15 @@ class excitation_solver:
                                                             np.conj(reduced_eigenvectors[s[1],(-k_1_prime)%self._N,:,n_prime]) *\
                                                             reduced_eigenvectors[s[1],(-k_1)%self._N,:,n]) * s[0] * s[1]
                                                             
-                                                    R[R_row_index,R_column_index] += (self._mod_U / self._N) * R_sum
+                                                    #R[R_row_index,R_column_index] += (self._mod_U / self._N) * R_sum
+                                                    R[R_row_index,R_column_index] += R_sum / self._N
                                                     
                                                     R_column_index += 1
                                 
                                 R_row_index += 1
                                 
             energies = LA.eigvalsh(R)
-            trion_3_electron_energies.append(energies)
+            trion_3_electron_energies.append(self._mod_U * (1.5*self._epsilon + energies))
             
         self._trion_3_electron_energies = np.array(trion_3_electron_energies)
             
