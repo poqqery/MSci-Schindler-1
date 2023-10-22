@@ -400,22 +400,22 @@ class excitation_solver:
                                                 for k_2 in range(self._N):
                                                     R_sum = 0.j
                                                     if ((k_1_prime+k_2_prime == k_1+k_2) and (m_prime == m)):
-                                                        R_sum += sum(np.conj(reduced_eigenvectors[s[1],(-k_1_prime)%self._N,:,n_prime]) *\
-                                                            reduced_eigenvectors[s[1],(-k_1)%self._N,:,n] *\
-                                                            np.conj(reduced_eigenvectors[s[2],(-k_2_prime)%self._N,:,l_prime]) *\
-                                                            reduced_eigenvectors[s[2],(-k_2)%self._N,:,l]) * s[1] * s[2]
+                                                        R_sum += sum(np.conj(reduced_eigenvectors[spins[1],(-k_1_prime)%self._N,:,n_prime]) *\
+                                                            reduced_eigenvectors[spins[1],(-k_1)%self._N,:,n] *\
+                                                            np.conj(reduced_eigenvectors[spins[2],(-k_2_prime)%self._N,:,l_prime]) *\
+                                                            reduced_eigenvectors[spins[2],(-k_2)%self._N,:,l]) * s[1] * s[2]
                                                     
                                                     if ((k_1_prime == k_1) and (n_prime == n)):
-                                                        R_sum += sum(np.conj(reduced_eigenvectors[s[0],(p+k_1+k_2_prime)%self._N,:,m_prime]) *\
-                                                            reduced_eigenvectors[s[0],(p+k_1+k_2)%self._N,:,m] *\
-                                                            np.conj(reduced_eigenvectors[s[2],(-k_2_prime)%self._N,:,l_prime]) *\
-                                                            reduced_eigenvectors[s[2],(-k_2)%self._N,:,l]) * s[0] * s[2]
+                                                        R_sum += sum(np.conj(reduced_eigenvectors[spins[0],(p+k_1+k_2_prime)%self._N,:,m_prime]) *\
+                                                            reduced_eigenvectors[spins[0],(p+k_1+k_2)%self._N,:,m] *\
+                                                            np.conj(reduced_eigenvectors[spins[2],(-k_2_prime)%self._N,:,l_prime]) *\
+                                                            reduced_eigenvectors[spins[2],(-k_2)%self._N,:,l]) * s[0] * s[2]
                                                             
                                                     if ((k_2_prime == k_2) and (l_prime == l)):
-                                                        R_sum += sum(np.conj(reduced_eigenvectors[s[0],(p+k_1_prime+k_2)%self._N,:,m_prime]) *\
-                                                            reduced_eigenvectors[s[0],(p+k_1+k_2)%self._N,:,m] *\
-                                                            np.conj(reduced_eigenvectors[s[1],(-k_1_prime)%self._N,:,n_prime]) *\
-                                                            reduced_eigenvectors[s[1],(-k_1)%self._N,:,n]) * s[0] * s[1]
+                                                        R_sum += sum(np.conj(reduced_eigenvectors[spins[0],(p+k_1_prime+k_2)%self._N,:,m_prime]) *\
+                                                            reduced_eigenvectors[spins[0],(p+k_1+k_2)%self._N,:,m] *\
+                                                            np.conj(reduced_eigenvectors[spins[1],(-k_1_prime)%self._N,:,n_prime]) *\
+                                                            reduced_eigenvectors[spins[1],(-k_1)%self._N,:,n]) * s[0] * s[1]
                                                             
                                                     R[R_row_index,R_column_index] += R_sum / self._N
                                                     
@@ -500,22 +500,22 @@ class excitation_solver:
                                                 for k_2 in range(self._N):
                                                     R_sum = 0.j
                                                     if ((k_1_prime+k_2_prime == k_1+k_2) and (m_prime == m)):
-                                                        R_sum += sum(reduced_eigenvectors[s[1],k_1_prime,:,n_prime] *\
-                                                            np.conj(reduced_eigenvectors[s[1],k_1,:,n]) *\
-                                                            reduced_eigenvectors[s[2],k_2_prime,:,l_prime] *\
-                                                            np.conj(reduced_eigenvectors[s[2],k_2,:,l])) * s[1] * s[2]
+                                                        R_sum += sum(reduced_eigenvectors[spins[1],k_1_prime,:,n_prime] *\
+                                                            np.conj(reduced_eigenvectors[spins[1],k_1,:,n]) *\
+                                                            reduced_eigenvectors[spins[2],k_2_prime,:,l_prime] *\
+                                                            np.conj(reduced_eigenvectors[spins[2],k_2,:,l])) * s[1] * s[2]
                                                     
                                                     if ((k_1_prime == k_1) and (n_prime == n)):
-                                                        R_sum -= sum(np.conj(reduced_eigenvectors[s[0],(p+k_1+k_2_prime)%self._N,:,m_prime]) *\
-                                                            reduced_eigenvectors[s[0],(p+k_1+k_2)%self._N,:,m] *\
-                                                            reduced_eigenvectors[s[2],k_2_prime,:,l_prime] *\
-                                                            np.conj(reduced_eigenvectors[s[2],k_2,:,l])) * s[0] * s[2]
+                                                        R_sum -= sum(np.conj(reduced_eigenvectors[spins[0],(p+k_1+k_2_prime)%self._N,:,m_prime]) *\
+                                                            reduced_eigenvectors[spins[0],(p+k_1+k_2)%self._N,:,m] *\
+                                                            reduced_eigenvectors[spins[2],k_2_prime,:,l_prime] *\
+                                                            np.conj(reduced_eigenvectors[spins[2],k_2,:,l])) * s[0] * s[2]
                                                             
                                                     if ((k_2_prime == k_2) and (l_prime == l)):
-                                                        R_sum -= sum(np.conj(reduced_eigenvectors[s[0],(p+k_1_prime+k_2)%self._N,:,m_prime]) *\
-                                                            reduced_eigenvectors[s[0],(p+k_1+k_2)%self._N,:,m] *\
-                                                            reduced_eigenvectors[s[1],k_1_prime,:,n_prime] *\
-                                                            np.conj(reduced_eigenvectors[s[1],k_1,:,n])) * s[0] * s[1]
+                                                        R_sum -= sum(np.conj(reduced_eigenvectors[spins[0],(p+k_1_prime+k_2)%self._N,:,m_prime]) *\
+                                                            reduced_eigenvectors[spins[0],(p+k_1+k_2)%self._N,:,m] *\
+                                                            reduced_eigenvectors[spins[1],k_1_prime,:,n_prime] *\
+                                                            np.conj(reduced_eigenvectors[spins[1],k_1,:,n])) * s[0] * s[1]
                                                             
                                                     R[R_row_index,R_column_index] += R_sum / self._N
                                                     
