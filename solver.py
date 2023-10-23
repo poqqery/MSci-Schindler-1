@@ -60,8 +60,7 @@ class excitation_solver:
         # The last k is omitted because it is the same state as the first.
         # Sampled from 0 to 2pi, not -pi to pi to make later operations easier.
         # Use aliasing to translate back to -pi to pi later for plotting.
-        self._k_samples = np.linspace(0., 2.*np.pi, self._N + 1)[:-1]
-        self._k_samples /= self._a
+        self._k_samples = np.linspace(0., 2.*np.pi, self._N + 1)[:-1] / self._a
         
         # Find the flat bands, if any exist
         self._flat_bands_up, self._flat_bands_down = self.identify_flat_bands()
@@ -340,7 +339,7 @@ class excitation_solver:
         plt.xlabel(r"$pa$")
         plt.ylabel("Energy")
         plt.show()
-        
+            
     def trion_3_electrons_spectra(self, flat_bands, spins):
         """
         Calculates the excitaion spectra of a trion composed of three
@@ -374,59 +373,58 @@ class excitation_solver:
         # sigma = index 0; sigma prime = index 1; sigma double prime = index 2
         s = -2*np.array(spins) + 1
         
-        trion_3_electron_energies = []
-        
         # Number of rows and columns in R
         R_dimensionality = self._N**2 * self._N_f**3
+        R = np.zeros((self._N, R_dimensionality, R_dimensionality), dtype="complex128")
         
-        # Iterate over each p
-        for p in range(self._N):
-            R = np.zeros((R_dimensionality, R_dimensionality), dtype="complex128")
-            
-            # (I honestly can't see any way right now to avoid 10 for loops...)
-            # Counts the current row of R being filled in
-            R_row_index = 0
-            for m_prime in range(self._N_f):
-                for n_prime in range(self._N_f):
-                    for l_prime in range(self._N_f):
-                        for k_1_prime in range(self._N):
-                            for k_2_prime in range(self._N):
-                                # Counts the current column of R being filled in
-                                R_column_index = 0
-                                for m in range(self._N_f):
-                                    for n in range(self._N_f):
-                                        for l in range(self._N_f):
-                                            for k_1 in range(self._N):
-                                                for k_2 in range(self._N):
-                                                    R_sum = 0.j
-                                                    if ((k_1_prime+k_2_prime == k_1+k_2) and (m_prime == m)):
-                                                        R_sum += sum(np.conj(reduced_eigenvectors[spins[1],(-k_1_prime)%self._N,:,n_prime]) *\
-                                                            reduced_eigenvectors[spins[1],(-k_1)%self._N,:,n] *\
-                                                            np.conj(reduced_eigenvectors[spins[2],(-k_2_prime)%self._N,:,l_prime]) *\
-                                                            reduced_eigenvectors[spins[2],(-k_2)%self._N,:,l]) * s[1] * s[2]
-                                                    
-                                                    if ((k_1_prime == k_1) and (n_prime == n)):
-                                                        R_sum += sum(np.conj(reduced_eigenvectors[spins[0],(p+k_1+k_2_prime)%self._N,:,m_prime]) *\
-                                                            reduced_eigenvectors[spins[0],(p+k_1+k_2)%self._N,:,m] *\
-                                                            np.conj(reduced_eigenvectors[spins[2],(-k_2_prime)%self._N,:,l_prime]) *\
-                                                            reduced_eigenvectors[spins[2],(-k_2)%self._N,:,l]) * s[0] * s[2]
-                                                            
-                                                    if ((k_2_prime == k_2) and (l_prime == l)):
-                                                        R_sum += sum(np.conj(reduced_eigenvectors[spins[0],(p+k_1_prime+k_2)%self._N,:,m_prime]) *\
-                                                            reduced_eigenvectors[spins[0],(p+k_1+k_2)%self._N,:,m] *\
-                                                            np.conj(reduced_eigenvectors[spins[1],(-k_1_prime)%self._N,:,n_prime]) *\
-                                                            reduced_eigenvectors[spins[1],(-k_1)%self._N,:,n]) * s[0] * s[1]
-                                                            
-                                                    R[R_row_index,R_column_index] += R_sum / self._N
-                                                    
-                                                    R_column_index += 1
-                                
-                                R_row_index += 1
-                                
-            energies = LA.eigvalsh(R)
-            trion_3_electron_energies.append(self._mod_U * (1.5*self._epsilon + energies))
-            
-        self._trion_3_electron_energies = np.array(trion_3_electron_energies)
+        self._trion_3_electron_energies = np.zeros((self._N, R_dimensionality))
+        
+        # Calculate a component of R for all p at once
+        p = np.arange(self._N)
+        
+        # (I honestly can't see any way right now to avoid 10 for loops...)
+        # Counts the current row of R being filled in
+        R_row_index = 0
+        for m_prime in range(self._N_f):
+            for n_prime in range(self._N_f):
+                for l_prime in range(self._N_f):
+                    for k_1_prime in range(self._N):
+                        for k_2_prime in range(self._N):
+                            # Counts the current column of R being filled in
+                            R_column_index = 0
+                            for m in range(self._N_f):
+                                for n in range(self._N_f):
+                                    for l in range(self._N_f):
+                                        for k_1 in range(self._N):
+                                            for k_2 in range(self._N):
+                                                R_sum = 0.j
+                                                if ((k_1_prime+k_2_prime == k_1+k_2) and (m_prime == m)):
+                                                    R_sum += np.sum(np.conj(reduced_eigenvectors[spins[1],(-k_1_prime)%self._N,:,n_prime]) *\
+                                                        reduced_eigenvectors[spins[1],(-k_1)%self._N,:,n] *\
+                                                        np.conj(reduced_eigenvectors[spins[2],(-k_2_prime)%self._N,:,l_prime]) *\
+                                                        reduced_eigenvectors[spins[2],(-k_2)%self._N,:,l]) * s[1] * s[2]
+                                                
+                                                if ((k_1_prime == k_1) and (n_prime == n)):
+                                                    R_sum += np.sum(np.conj(reduced_eigenvectors[spins[0],(p+k_1+k_2_prime)%self._N,:,m_prime]) *\
+                                                        reduced_eigenvectors[spins[0],(p+k_1+k_2)%self._N,:,m] *\
+                                                        np.conj(reduced_eigenvectors[spins[2],(-k_2_prime)%self._N,:,l_prime]) *\
+                                                        reduced_eigenvectors[spins[2],(-k_2)%self._N,:,l], axis=1) * s[0] * s[2]
+                                                        
+                                                if ((k_2_prime == k_2) and (l_prime == l)):
+                                                    R_sum += np.sum(np.conj(reduced_eigenvectors[spins[0],(p+k_1_prime+k_2)%self._N,:,m_prime]) *\
+                                                        reduced_eigenvectors[spins[0],(p+k_1+k_2)%self._N,:,m] *\
+                                                        np.conj(reduced_eigenvectors[spins[1],(-k_1_prime)%self._N,:,n_prime]) *\
+                                                        reduced_eigenvectors[spins[1],(-k_1)%self._N,:,n], axis=1) * s[0] * s[1]
+                                                        
+                                                R[:,R_row_index,R_column_index] += R_sum / self._N
+                                                
+                                                R_column_index += 1
+                            
+                            R_row_index += 1
+        
+        for i in range(self._N):
+            energies = LA.eigvalsh(R[i])
+            self._trion_3_electron_energies[i] += self._mod_U * (1.5*self._epsilon + energies)
             
         scaled_k = np.linspace(-np.pi, np.pi, self._N + 1)[:-1]
         # Plot the excitation spectra
@@ -479,52 +477,54 @@ class excitation_solver:
         
         # Number of rows and columns in R
         R_dimensionality = self._N**2 * self._N_f**3
+        R = np.zeros((self._N, R_dimensionality, R_dimensionality), dtype="complex128")
         
         self._trion_electrons_holes_energies = np.zeros((self._N, R_dimensionality))
         
-        # Iterate over each p
-        for p in range(self._N):
-            R = np.zeros((R_dimensionality, R_dimensionality), dtype="complex128")
-            R_row_index = 0
-            for m_prime in range(self._N_f):
-                for n_prime in range(self._N_f):
-                    for l_prime in range(self._N_f):
-                        for k_1_prime in range(self._N):
-                            for k_2_prime in range(self._N):
-                                # Counts the current column of R being filled in
-                                R_column_index = 0
-                                for m in range(self._N_f):
-                                    for n in range(self._N_f):
-                                        for l in range(self._N_f):
-                                            for k_1 in range(self._N):
-                                                for k_2 in range(self._N):
-                                                    R_sum = 0.j
-                                                    if ((k_1_prime+k_2_prime == k_1+k_2) and (m_prime == m)):
-                                                        R_sum += sum(reduced_eigenvectors[spins[1],k_1_prime,:,n_prime] *\
-                                                            np.conj(reduced_eigenvectors[spins[1],k_1,:,n]) *\
-                                                            reduced_eigenvectors[spins[2],k_2_prime,:,l_prime] *\
-                                                            np.conj(reduced_eigenvectors[spins[2],k_2,:,l])) * s[1] * s[2]
-                                                    
-                                                    if ((k_1_prime == k_1) and (n_prime == n)):
-                                                        R_sum -= sum(np.conj(reduced_eigenvectors[spins[0],(p+k_1+k_2_prime)%self._N,:,m_prime]) *\
-                                                            reduced_eigenvectors[spins[0],(p+k_1+k_2)%self._N,:,m] *\
-                                                            reduced_eigenvectors[spins[2],k_2_prime,:,l_prime] *\
-                                                            np.conj(reduced_eigenvectors[spins[2],k_2,:,l])) * s[0] * s[2]
-                                                            
-                                                    if ((k_2_prime == k_2) and (l_prime == l)):
-                                                        R_sum -= sum(np.conj(reduced_eigenvectors[spins[0],(p+k_1_prime+k_2)%self._N,:,m_prime]) *\
-                                                            reduced_eigenvectors[spins[0],(p+k_1+k_2)%self._N,:,m] *\
-                                                            reduced_eigenvectors[spins[1],k_1_prime,:,n_prime] *\
-                                                            np.conj(reduced_eigenvectors[spins[1],k_1,:,n])) * s[0] * s[1]
-                                                            
-                                                    R[R_row_index,R_column_index] += R_sum / self._N
-                                                    
-                                                    R_column_index += 1
-                                
-                                R_row_index += 1
-                                
-            energies = LA.eigvalsh(R)
-            self._trion_electrons_holes_energies[p] += self._mod_U * (1.5*self._epsilon + energies)
+        # Calculate a component of R for all p at once
+        p = np.arange(self._N)
+        
+        R_row_index = 0
+        for m_prime in range(self._N_f):
+            for n_prime in range(self._N_f):
+                for l_prime in range(self._N_f):
+                    for k_1_prime in range(self._N):
+                        for k_2_prime in range(self._N):
+                            # Counts the current column of R being filled in
+                            R_column_index = 0
+                            for m in range(self._N_f):
+                                for n in range(self._N_f):
+                                    for l in range(self._N_f):
+                                        for k_1 in range(self._N):
+                                            for k_2 in range(self._N):
+                                                R_sum = 0.j
+                                                if ((k_1_prime+k_2_prime == k_1+k_2) and (m_prime == m)):
+                                                    R_sum += np.sum(reduced_eigenvectors[spins[1],k_1_prime,:,n_prime] *\
+                                                        np.conj(reduced_eigenvectors[spins[1],k_1,:,n]) *\
+                                                        reduced_eigenvectors[spins[2],k_2_prime,:,l_prime] *\
+                                                        np.conj(reduced_eigenvectors[spins[2],k_2,:,l])) * s[1] * s[2]
+                                                
+                                                if ((k_1_prime == k_1) and (n_prime == n)):
+                                                    R_sum -= np.sum(np.conj(reduced_eigenvectors[spins[0],(p+k_1+k_2_prime)%self._N,:,m_prime]) *\
+                                                        reduced_eigenvectors[spins[0],(p+k_1+k_2)%self._N,:,m] *\
+                                                        reduced_eigenvectors[spins[2],k_2_prime,:,l_prime] *\
+                                                        np.conj(reduced_eigenvectors[spins[2],k_2,:,l]), axis=1) * s[0] * s[2]
+                                                        
+                                                if ((k_2_prime == k_2) and (l_prime == l)):
+                                                    R_sum -= np.sum(np.conj(reduced_eigenvectors[spins[0],(p+k_1_prime+k_2)%self._N,:,m_prime]) *\
+                                                        reduced_eigenvectors[spins[0],(p+k_1+k_2)%self._N,:,m] *\
+                                                        reduced_eigenvectors[spins[1],k_1_prime,:,n_prime] *\
+                                                        np.conj(reduced_eigenvectors[spins[1],k_1,:,n]), axis=1) * s[0] * s[1]
+                                                        
+                                                R[:,R_row_index,R_column_index] += R_sum / self._N
+                                                
+                                                R_column_index += 1
+                            
+                            R_row_index += 1
+                            
+        for i in range(self._N):
+            energies = LA.eigvalsh(R[i])
+            self._trion_electrons_holes_energies[i] += self._mod_U * (1.5*self._epsilon + energies)
             
         scaled_k = np.linspace(-np.pi, np.pi, self._N + 1)[:-1]
         # Plot the excitation spectra
