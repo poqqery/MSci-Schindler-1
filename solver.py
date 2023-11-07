@@ -550,7 +550,6 @@ class excitation_solver:
         if (type(self._true_indices) != np.ndarray):
             self.find_valid_sum_terms()
             
-        # 8-bit integers to save memory (shouldn't need more than this anyway)
         p = np.arange(self._N)
         # This p_cube thing looks complicated but is needed to quickly evaluate
         # the sums (see below)
