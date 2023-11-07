@@ -7,6 +7,7 @@ Created on Sat Oct 21 01:31:09 2023
 
 import numpy as np
 import numpy.linalg as LA
+from scipy import sparse
 import matplotlib.pyplot as plt
 
 class NoFlatBandException(Exception):
@@ -64,6 +65,7 @@ class excitation_solver:
         
         # Find the flat bands, if any exist
         self._flat_bands_up, self._flat_bands_down = self.identify_flat_bands()
+        self._true_indices = None
         
     def check_band_degeneracy(self, flat_bands):
         """
@@ -178,7 +180,7 @@ class excitation_solver:
                 sample_hamiltonian = self._hamiltonian(self._k_samples[i], spin)
                 sample_eigenvalues, sample_eigenvectors = LA.eigh(sample_hamiltonian)
                 self._eigenvalues[spin,i] += sample_eigenvalues
-                self._eigenvectors[spin,i] += sample_eigenvectors
+                self._eigenvectors[spin,i] += sample_eigenvectors * np.exp(1.j * 2.*np.pi * np.random.random())
                 
         # Now identify flat bands (if any exist).
         # This algorithm is technically flawed because it depends on
@@ -217,6 +219,20 @@ class excitation_solver:
         # in a given column even if there are intersecting bands.
             
         return flat_bands_up, flat_bands_down
+    
+    def find_valid_sum_terms(self):
+        
+        # 8-bit to save memory (shouldn't really need any bigger, anyway)
+        p = np.arange(self._N, dtype="int8")
+        k_prime_outer = np.add.outer(p, p) % self._N
+        # k_prime_outer varies over the first 2 indices
+        k_prime_outer = np.broadcast_to(k_prime_outer, (self._N, self._N, self._N, self._N))
+        # k_outer varies over the last 2 indices
+        k_outer = np.einsum("ijkl->klij", k_prime_outer)
+        k_delta_tensor = k_prime_outer == k_outer
+        # This array gives the values that need to be summed over in the sum
+        # with a delta spanning four k indices (the complicated one)
+        self._true_indices = np.array(np.nonzero(k_delta_tensor)).T
     
     def charge_1_spectra(self, flat_bands, spin):
         """
@@ -329,17 +345,84 @@ class excitation_solver:
         scaled_k = np.linspace(-np.pi, np.pi, self._N + 1)[:-1]
         # Plot the excitation spectra
         for i in range(self._charge_2_energies.shape[1]):
-            plt.plot(scaled_k, np.roll(self._charge_2_energies[:,i], self._N // 2), ".")
+            plt.plot(scaled_k, np.roll(self._charge_2_energies[:,i], self._N // 2), ".", color="blue")
             
         plt.plot(np.array([-np.pi, np.pi]), self._mod_U*self._epsilon*np.ones(2), "--", color="black", label=r"$\epsilon |U|$")
             
         plt.grid(True)
         plt.legend()
-        plt.title("Excitation Spectra", fontsize=18)
+        plt.title("Cooper Pair Excitation Spectra", fontsize=18)
         plt.xlabel(r"$pa$")
         plt.ylabel("Energy")
         plt.show()
+        
+    def charge_2_mixed_spectra(self, flat_bands, spins):
+        """
+        Calculates the electron-hole pair excitation spectra for the specified
+        degenerate flat bands. Terminates if the given bands are not
+        degenerate.
+
+        Parameters
+        ----------
+        flat_bands : list of ints
+            Indices of the flat bands to analyze.
+        spins : array or similar of ints
+            Spins of the two fermions; left is the electron and right the hole.
+            0 for up and 1 for down.
+
+        Returns
+        -------
+        None.
+
+        """
+        
+        # Check the bands all lie at the same energy. Terminate otherwise.
+        self.check_band_degeneracy(flat_bands)
+        # Epsilon from the UPC can now be assigned
+        self._N_f = len(flat_bands)
+        self._epsilon = self._N_f / self._N_orb
+        
+        # Remove the columns of eigenvectors that do not correspond to the flat bands
+        reduced_eigenvectors = self._eigenvectors[:,:,:,flat_bands]
+        # Check the model obeys the UPC. Terminate otherwise.
+        self.check_UPC(reduced_eigenvectors)
+        
+        # Define the two spins (0 maps to 1, 1 maps to -1 for up and down respectively)
+        # sigma = index 0; sigma prime = index 1
+        s = -2*np.array(spins) + 1
+        
+        self._charge_2_mixed_energies = []
+        
+        # Iterate over each p
+        for i in range(self._N):
+            h = 0.j
+            # Iterate over each k
+            for j in range(self._N):
+                U_k = reduced_eigenvectors[spins[1],j]
+                P_k = U_k @ np.conjugate(U_k.T)
+                U_p_plus_k = reduced_eigenvectors[spins[0],(i + j) % self._N]
+                P_p_plus_k = U_p_plus_k @ np.conjugate(U_p_plus_k.T)
+                h += P_p_plus_k * np.conjugate(P_k)
+                
+            energies = LA.eigvalsh(s[0] * s[1] * (h / self._N))
+            self._charge_2_mixed_energies.append(self._mod_U * (self._epsilon - energies))
+        
+        self._charge_2_mixed_energies = np.array(self._charge_2_mixed_energies)
+        
+        scaled_k = np.linspace(-np.pi, np.pi, self._N + 1)[:-1]
+        # Plot the excitation spectra
+        for i in range(self._charge_2_mixed_energies.shape[1]):
+            plt.plot(scaled_k, np.roll(self._charge_2_mixed_energies[:,i], self._N // 2), ".", color="blue")
             
+        plt.plot(np.array([-np.pi, np.pi]), self._mod_U*self._epsilon*np.ones(2), "--", color="black", label=r"$\epsilon |U|$")
+            
+        plt.grid(True)
+        plt.legend()
+        plt.title("Charge +2 (Mixed) Excitation Spectra", fontsize=18)
+        plt.xlabel(r"$pa$")
+        plt.ylabel("Energy")
+        plt.show()
+        
     def trion_3_electrons_spectra(self, flat_bands, spins):
         """
         Calculates the excitaion spectra of a trion composed of three
@@ -374,8 +457,8 @@ class excitation_solver:
         s = -2*np.array(spins) + 1
         
         # Number of rows and columns in R
-        R_dimensionality = self._N**2 * self._N_f**3
-        R = np.zeros((self._N, R_dimensionality, R_dimensionality), dtype="complex128")
+        R_dimensionality =  self._N**2 * self._N_f**3
+        self._R = np.zeros((self._N, R_dimensionality, R_dimensionality), dtype="complex128")
         
         self._trion_3_electron_energies = np.zeros((self._N, R_dimensionality))
         
@@ -398,7 +481,7 @@ class excitation_solver:
                                         for k_1 in range(self._N):
                                             for k_2 in range(self._N):
                                                 R_sum = 0.j
-                                                if ((k_1_prime+k_2_prime == k_1+k_2) and (m_prime == m)):
+                                                if (((k_1_prime+k_2_prime)%self._N == (k_1+k_2)%self._N) and (m_prime == m)):
                                                     R_sum += np.sum(np.conj(reduced_eigenvectors[spins[1],(-k_1_prime)%self._N,:,n_prime]) *\
                                                         reduced_eigenvectors[spins[1],(-k_1)%self._N,:,n] *\
                                                         np.conj(reduced_eigenvectors[spins[2],(-k_2_prime)%self._N,:,l_prime]) *\
@@ -416,20 +499,135 @@ class excitation_solver:
                                                         np.conj(reduced_eigenvectors[spins[1],(-k_1_prime)%self._N,:,n_prime]) *\
                                                         reduced_eigenvectors[spins[1],(-k_1)%self._N,:,n], axis=1) * s[0] * s[1]
                                                         
-                                                R[:,R_row_index,R_column_index] += R_sum / self._N
+                                                self._R[:,R_row_index,R_column_index] += R_sum / self._N
                                                 
                                                 R_column_index += 1
                             
                             R_row_index += 1
         
         for i in range(self._N):
-            energies = LA.eigvalsh(R[i])
+            energies = LA.eigvalsh(self._R[i])
             self._trion_3_electron_energies[i] += self._mod_U * (1.5*self._epsilon + energies)
             
         scaled_k = np.linspace(-np.pi, np.pi, self._N + 1)[:-1]
         # Plot the excitation spectra
-        for i in range(self._trion_3_electron_energies.shape[1]):
-            plt.plot(scaled_k, np.roll(self._trion_3_electron_energies[:,i], self._N // 2), ".", color="red")
+        #for i in range(self._trion_3_electron_energies.shape[1]):
+        for i in range(R_dimensionality):
+            plt.plot(scaled_k, np.roll(self._trion_3_electron_energies[:,i], self._N // 2), ".", color="blue")
+            
+        plt.plot(np.array([-np.pi, np.pi]), 1.5*self._mod_U*self._epsilon*np.ones(2), "--", color="black", label=r"$\frac{3}{2}\epsilon |U|$")
+            
+        plt.grid(True)
+        plt.legend()
+        plt.title("Trion (3 Electrons) Excitation Spectra", fontsize=18)
+        plt.xlabel(r"$pa$")
+        plt.ylabel("Energy")
+        plt.show()
+        
+    def trion_3_electrons_sparse(self, flat_bands, spins):
+        
+        # Check the bands all lie at the same energy. Terminate otherwise.
+        self.check_band_degeneracy(flat_bands)
+        # Epsilon from the UPC can now be assigned
+        self._N_f = len(flat_bands)
+        self._epsilon = self._N_f / self._N_orb
+        
+        # Remove the columns of eigenvectors that do not correspond to the flat bands
+        reduced_eigenvectors = self._eigenvectors[:,:,:,flat_bands]
+        # Check the model obeys the UPC. Terminate otherwise.
+        self.check_UPC(reduced_eigenvectors)
+        
+        # Define the three spins (0 maps to 1, 1 maps to -1 for up and down respectively)
+        # sigma = index 0; sigma prime = index 1; sigma double prime = index 2
+        s = -2*np.array(spins) + 1
+        
+        # Number of rows and columns in R
+        R_dimensionality =  self._N**2 * self._N_f**3
+        
+        # First check that the list of non-zero summation terms for the
+        # complicated Kronecker delta has been calculated; generate them if
+        # they haven't
+        if (type(self._true_indices) != np.ndarray):
+            self.find_valid_sum_terms()
+            
+        # 8-bit integers to save memory (shouldn't need more than this anyway)
+        p = np.arange(self._N)
+        # This p_cube thing looks complicated but is needed to quickly evaluate
+        # the sums (see below)
+        p_cube = np.broadcast_to(p, (self._N, self._N, self._N))
+        # R will be populated with lists of sparse matrices (one for each p)
+        R = []
+        
+        for p_val in p:
+            # These 3 lists will build the sparse matrix, R
+            rows = []
+            cols = []
+            vals = []
+            row_index_count = 0
+            for m_prime in range(self._N_f):
+                for n_prime in range(self._N_f):
+                    for l_prime in range(self._N_f):
+                        col_index_count = 0
+                        for m in range(self._N_f):
+                            for n in range(self._N_f):
+                                for l in range(self._N_f):
+                                    # Evaluate the first sum with the more complex
+                                    # requirements from the Kronecker delta
+                                    if (m_prime == m):
+                                        k_1_prime = self._true_indices[:,0]
+                                        k_2_prime = self._true_indices[:,1]
+                                        k_1 = self._true_indices[:,2]
+                                        k_2 = self._true_indices[:,3]
+                                        rows.extend(row_index_count*self._N**2 + k_1_prime*self._N + k_2_prime)
+                                        cols.extend(col_index_count*self._N**2 + k_1*self._N + k_2)
+                                        vals.extend((np.sum(np.conj(reduced_eigenvectors[spins[1],(-k_1_prime)%self._N,:,n_prime]) *\
+                                            reduced_eigenvectors[spins[1],(-k_1)%self._N,:,n] *\
+                                            np.conj(reduced_eigenvectors[spins[2],(-k_2_prime)%self._N,:,l_prime]) *\
+                                            reduced_eigenvectors[spins[2],(-k_2)%self._N,:,l], axis=1) / self._N) * s[1] * s[2])
+                                            
+                                    # Evaluate the second sum (k_1_prime = k_1)
+                                    if (n_prime == n):
+                                        # What's going on here is pretty confusing;
+                                        # I can explain in person if you want
+                                        k_1 = np.einsum("ijk->kij", p_cube).flatten()
+                                        k_2_prime = np.einsum("ijk->ikj", p_cube).flatten()
+                                        k_2 = p_cube.flatten()
+                                        rows.extend(row_index_count*self._N**2 + k_1*self._N + k_2_prime)
+                                        cols.extend(col_index_count*self._N**2 + k_1*self._N + k_2)
+                                        vals.extend((np.sum(np.conj(reduced_eigenvectors[spins[0],(p_val+k_1+k_2_prime)%self._N,:,m_prime]) *\
+                                            reduced_eigenvectors[spins[0],(p_val+k_1+k_2)%self._N,:,m] *\
+                                            np.conj(reduced_eigenvectors[spins[2],(-k_2_prime)%self._N,:,l_prime]) *\
+                                            reduced_eigenvectors[spins[2],(-k_2)%self._N,:,l], axis=1) / self._N) * s[0] *s[2])
+                                            
+                                    # Evaluate the third sum (k_2_prime = k_2)
+                                    if (l_prime == l):
+                                        k_2 = np.einsum("ijk->kij", p_cube).flatten()
+                                        k_1_prime = np.einsum("ijk->ikj", p_cube).flatten()
+                                        k_1 = p_cube.flatten()
+                                        rows.extend(row_index_count*self._N**2 + k_1_prime*self._N + k_2)
+                                        cols.extend(col_index_count*self._N**2 + k_1*self._N + k_2)
+                                        vals.extend((np.sum(np.conj(reduced_eigenvectors[spins[0],(p_val+k_1_prime+k_2)%self._N,:,m_prime]) *\
+                                            reduced_eigenvectors[spins[0],(p_val+k_1+k_2)%self._N,:,m] *\
+                                            np.conj(reduced_eigenvectors[spins[1],(-k_1_prime)%self._N,:,n_prime]) *\
+                                            reduced_eigenvectors[spins[1],(-k_1)%self._N,:,n], axis=1) / self._N) * s[0] * s[1])
+                                        
+                                    col_index_count += 1
+                                    
+                        row_index_count += 1
+                        
+            # Now build the sparse matrix
+            R.append(sparse.csr_array((vals, (rows, cols)), shape=(R_dimensionality, R_dimensionality)))
+        
+        # Find the 5 lowest eigenvalues (energies) at each p
+        self._trion_electrons_energies = np.zeros((self._N, 5))
+        for i in range(self._N):
+            energies, vectors = sparse.linalg.eigsh(R[i], k=5, which="SA")
+            self._trion_electrons_energies[i] += self._mod_U * (1.5*self._epsilon + energies)
+            
+        scaled_k = np.linspace(-np.pi, np.pi, self._N + 1)[:-1]
+        # Plot the lowest excitation spectra
+        for i in range(5):
+            plt.plot(scaled_k, np.roll(self._trion_electrons_energies[:,i], self._N // 2), ".", color="blue")
             
         plt.plot(np.array([-np.pi, np.pi]), 1.5*self._mod_U*self._epsilon*np.ones(2), "--", color="black", label=r"$\frac{3}{2}\epsilon |U|$")
             
@@ -452,7 +650,7 @@ class excitation_solver:
         flat_bands : list of ints
             Indices of the flat bands to analyze.
         spins : array or similar of ints
-            Spins of the three electrons. 0 for up and 1 for down.
+            Spins of the three fermions. 0 for up and 1 for down.
 
         Returns
         -------
@@ -477,7 +675,7 @@ class excitation_solver:
         
         # Number of rows and columns in R
         R_dimensionality = self._N**2 * self._N_f**3
-        R = np.zeros((self._N, R_dimensionality, R_dimensionality), dtype="complex128")
+        self._R = np.zeros((self._N, R_dimensionality, R_dimensionality), dtype="complex128")
         
         self._trion_electrons_holes_energies = np.zeros((self._N, R_dimensionality))
         
@@ -498,7 +696,7 @@ class excitation_solver:
                                         for k_1 in range(self._N):
                                             for k_2 in range(self._N):
                                                 R_sum = 0.j
-                                                if ((k_1_prime+k_2_prime == k_1+k_2) and (m_prime == m)):
+                                                if (((k_1_prime+k_2_prime)%self._N == (k_1+k_2)%self._N) and (m_prime == m)):
                                                     R_sum += np.sum(reduced_eigenvectors[spins[1],k_1_prime,:,n_prime] *\
                                                         np.conj(reduced_eigenvectors[spins[1],k_1,:,n]) *\
                                                         reduced_eigenvectors[spins[2],k_2_prime,:,l_prime] *\
@@ -516,14 +714,14 @@ class excitation_solver:
                                                         reduced_eigenvectors[spins[1],k_1_prime,:,n_prime] *\
                                                         np.conj(reduced_eigenvectors[spins[1],k_1,:,n]), axis=1) * s[0] * s[1]
                                                         
-                                                R[:,R_row_index,R_column_index] += R_sum / self._N
+                                                self._R[:,R_row_index,R_column_index] += R_sum / self._N
                                                 
                                                 R_column_index += 1
                             
                             R_row_index += 1
                             
         for i in range(self._N):
-            energies = LA.eigvalsh(R[i])
+            energies = LA.eigvalsh(self._R[i])
             self._trion_electrons_holes_energies[i] += self._mod_U * (1.5*self._epsilon + energies)
             
         scaled_k = np.linspace(-np.pi, np.pi, self._N + 1)[:-1]

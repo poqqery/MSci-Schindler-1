@@ -25,6 +25,9 @@ update_params_sim()
 
 #%%
 
+sigma_2 = np.array([[0., -1.j], [1.j, 0.]])
+sigma_3 = np.array([[1., 0.], [0., -1.]], dtype="complex128")
+
 def dimerized_SSH(k, spin):
     """
     Hamiltonian of the dimerized SSH chain (taken from the paper).
@@ -44,9 +47,6 @@ def dimerized_SSH(k, spin):
 
     """
     
-    sigma_2 = np.array([[0., -1.j], [1.j, 0.]])
-    sigma_3 = np.array([[1., 0.], [0., -1.]], dtype="complex128")
-    
     h = np.sin(k) * sigma_2 + np.cos(k) * sigma_3
     
     return h
@@ -60,4 +60,4 @@ def zig_zag(k, spin):
     
     return h
 
-test = excitation_solver(1., dimerized_SSH, 1., 20)
+test = excitation_solver(1., dimerized_SSH, 1., 30)
