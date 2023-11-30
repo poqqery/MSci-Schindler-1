@@ -42,7 +42,7 @@ class excitation_solver:
             Number of unit cells. This automatically determines the valid
             wavevectors to sample at: the ones that satisfy periodic boundary
             conditions and maintain independence. For the love of God, keep
-            this number small (<= 20) if evaluating trions. N must be even!
+            this number small if evaluating trions. N must be even!
             Translation of the FBZ does not work correctly if N is not even
             because there will be no periodic state at k = 0. The default
             is 50.
@@ -356,6 +356,77 @@ class excitation_solver:
         plt.ylabel("Energy")
         plt.show()
         
+    def charge_2_spectra_new(self, flat_bands, spins):
+        
+        # Check the bands all lie at the same energy. Terminate otherwise.
+        self.check_band_degeneracy(flat_bands)
+        # Epsilon from the UPC can now be assigned
+        self._N_f = len(flat_bands)
+        self._epsilon = self._N_f / self._N_orb
+        
+        # Remove the columns of eigenvectors that do not correspond to the flat bands
+        reduced_eigenvectors = self._eigenvectors[:,:,:,flat_bands]
+        # Check the model obeys the UPC. Terminate otherwise.
+        self.check_UPC(reduced_eigenvectors)
+        
+        # Define the three spins (0 maps to 1, 1 maps to -1 for up and down respectively)
+        # sigma = index 0; sigma prime = index 1; sigma double prime = index 2
+        s = -2*np.array(spins) + 1
+        
+        # Number of rows and columns in R
+        R_dimensionality =  self._N * self._N_f**2
+        self._R = np.zeros((self._N, R_dimensionality, R_dimensionality), dtype="complex128")
+        
+        self._cooper_pair_energies = np.zeros((self._N, R_dimensionality))
+        
+        # Calculate a component of R for all p at once
+        p = np.arange(self._N)
+        
+        R_row_index = 0
+        for m_prime in range(self._N_f):
+            for n_prime in range(self._N_f):
+                for k_prime in range(self._N):
+                    R_col_index = 0
+                    for m in range(self._N_f):
+                        for n in range(self._N_f):
+                            for k in range(self._N):
+                                R_sum = np.sum(np.conj(reduced_eigenvectors[spins[0],(p+k_prime)%self._N,:,m_prime]) *\
+                                    reduced_eigenvectors[spins[0],(p+k)%self._N,:,m] *\
+                                    np.conj(reduced_eigenvectors[spins[1],(-k_prime)%self._N,:,n_prime]) *\
+                                    reduced_eigenvectors[spins[1],(-k)%self._N,:,n], axis=1) * s[0] * s[1]
+                                    
+                                self._R[:,R_row_index,R_col_index] += R_sum / self._N
+                                
+                                R_col_index += 1
+                    
+                    R_row_index += 1
+                    
+        # Now apply the correction (the second R term)
+        # Applies only if the spins are the same
+        if (spins[0] == spins[1]):
+            for p in range(self._N):
+                q = np.arange(self._N)
+                rearranged = (-p-q) % self._N
+                self._R[p] -= self._R[p,rearranged]
+                    
+        for i in range(self._N):
+            energies = LA.eigvalsh(self._R[i])
+            self._cooper_pair_energies[i] += self._mod_U * (self._epsilon + energies)
+            
+        scaled_k = np.linspace(-np.pi, np.pi, self._N + 1)[:-1]
+        # Plot the excitation spectra
+        for i in range(R_dimensionality):
+            plt.plot(scaled_k, np.roll(self._cooper_pair_energies[:,i], self._N // 2), ".", color="blue")
+            
+        plt.plot(np.array([-np.pi, np.pi]), self._mod_U*self._epsilon*np.ones(2), "--", color="black", label=r"$\epsilon |U|$")
+            
+        plt.grid(True)
+        plt.legend()
+        plt.title("Cooper Pair Excitation Spectra", fontsize=18)
+        plt.xlabel(r"$pa$")
+        plt.ylabel("Energy")
+        plt.show()
+        
     def charge_2_mixed_spectra(self, flat_bands, spins):
         """
         Calculates the electron-hole pair excitation spectra for the specified
@@ -511,7 +582,6 @@ class excitation_solver:
             
         scaled_k = np.linspace(-np.pi, np.pi, self._N + 1)[:-1]
         # Plot the excitation spectra
-        #for i in range(self._trion_3_electron_energies.shape[1]):
         for i in range(R_dimensionality):
             plt.plot(scaled_k, np.roll(self._trion_3_electron_energies[:,i], self._N // 2), ".", color="blue")
             
@@ -620,6 +690,8 @@ class excitation_solver:
         # Find the 5 lowest eigenvalues (energies) at each p
         self._trion_electrons_energies = np.zeros((self._N, 5))
         for i in range(self._N):
+            # Don't need the eigenvectors, but the eigen solver returns them
+            # anyway
             energies, vectors = sparse.linalg.eigsh(R[i], k=5, which="SA")
             self._trion_electrons_energies[i] += self._mod_U * (1.5*self._epsilon + energies)
             
@@ -628,7 +700,8 @@ class excitation_solver:
         for i in range(5):
             plt.plot(scaled_k, np.roll(self._trion_electrons_energies[:,i], self._N // 2), ".", color="blue")
             
-        plt.plot(np.array([-np.pi, np.pi]), 1.5*self._mod_U*self._epsilon*np.ones(2), "--", color="black", label=r"$\frac{3}{2}\epsilon |U|$")
+        plt.plot(np.array([-np.pi, np.pi]), 1.5*self._mod_U*self._epsilon*np.ones(2),\
+            "--", color="black", label=r"$\frac{3}{2}\epsilon |U|$")
             
         plt.grid(True)
         plt.legend()
