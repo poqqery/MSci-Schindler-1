@@ -60,4 +60,4 @@ def zig_zag(k, spin):
     
     return h
 
-test = excitation_solver(1., dimerized_SSH, 1., 30)
+test = excitation_solver(1., dimerized_SSH, 1., 24)
