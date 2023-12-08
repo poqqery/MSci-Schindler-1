@@ -180,12 +180,12 @@ class excitation_solver:
                 sample_hamiltonian = self._hamiltonian(self._k_samples[i], spin)
                 sample_eigenvalues, sample_eigenvectors = LA.eigh(sample_hamiltonian)
                 self._eigenvalues[spin,i] += sample_eigenvalues
-                self._eigenvectors[spin,i] += sample_eigenvectors * np.exp(1.j * 2.*np.pi * np.random.random())
+                self._eigenvectors[spin,i] += sample_eigenvectors
                 
         # Now identify flat bands (if any exist).
         # This algorithm is technically flawed because it depends on
         # np.linalg.eigh returning the eigenvalues of the bands in the
-        # same "order" consistently, but it'll probably work so long as bands
+        # same "order" consistently, but it'll work for now as long as bands
         # don't cross.
         
         flat_bands_up = []
@@ -283,12 +283,12 @@ class excitation_solver:
             plt.plot(scaled_k, np.roll(self._charge_1_energies[:,i], self._N // 2), ".")
             
         plt.grid(True)
-        plt.title("Excitation Spectra", fontsize=18)
+        plt.title("Excitation Spectrum", fontsize=18)
         plt.xlabel(r"$ka$")
         plt.ylabel("Energy")
         plt.show()
         
-    def charge_2_spectra(self, flat_bands):
+    def charge_2_spectra_old(self, flat_bands):
         """
         Calculates the Cooper pair excitation spectra for the specified
         degenerate flat bands. Automatically assumes opposite spins for the
@@ -351,7 +351,7 @@ class excitation_solver:
             
         plt.grid(True)
         plt.legend()
-        plt.title("Cooper Pair Excitation Spectra", fontsize=18)
+        plt.title("Cooper Pair Excitation Spectrum", fontsize=18)
         plt.xlabel(r"$pa$")
         plt.ylabel("Energy")
         plt.show()
@@ -377,8 +377,6 @@ class excitation_solver:
         R_dimensionality =  self._N * self._N_f**2
         self._R = np.zeros((self._N, R_dimensionality, R_dimensionality), dtype="complex128")
         
-        self._cooper_pair_energies = np.zeros((self._N, R_dimensionality))
-        
         # Calculate a component of R for all p at once
         p = np.arange(self._N)
         
@@ -400,34 +398,85 @@ class excitation_solver:
                                 R_col_index += 1
                     
                     R_row_index += 1
+        
+        # Add the identity matrix part to everything at once
+        self._R[:,np.arange(R_dimensionality),np.arange(R_dimensionality)] += self._epsilon
                     
         # Now apply the correction (the second R term)
         # Applies only if the spins are the same
         if (spins[0] == spins[1]):
-            for p in range(self._N):
+            for p_value in range(self._N):
                 q = np.arange(self._N)
-                rearranged = (-p-q) % self._N
-                self._R[p] -= self._R[p,rearranged]
+                rearranged = (-p_value-q) % self._N
+                self._R[p_value] -= self._R[p_value,rearranged]
+                
+        # Convert 3-dimensional array, self._R, to a list of matrices at the different p
+        self._R = list(self._R)
+                
+        # Remove duplicate (non-independent) states and those forbidden by the PEP
+        # (these will have entirely zero rows/columns at the index corresponding
+        # to that state).
+        # Ignore the multiple-flat-band case for now (it considerably complicates
+        # the indexing of states).
+        for p_value in range(self._N):
+            independent_states = []
+            allowed_indices = []
+            # Disallowed states occur only when the spins are the same
+            if (spins[0] == spins[1]):
+                for k_value in range(self._N):
+                    # Go through each state at this p
+                    # Sorting removes dependence on the operator order of gamma dagger
+                    state = sorted([(p_value + k_value) % self._N, (-k_value) % self._N])
+                    if state in independent_states:
+                        # This state is not independent (it has already been counted)
+                        independent = False
+                    else:
+                        independent_states.append(state)
+                        independent = True
+    
+                    # Now check if the state is forbidden by the PEP (momenta are the same)
+                    if ((p_value + k_value) % self._N == (-k_value) % self._N):
+                        allowed = False
+                    else:
+                        allowed = True
+                        
+                    # If the state is independent and allowed, it is kept in the matrix
+                    if ((independent == True) and (allowed == True)):
+                        allowed_indices.append(True)
+                    else:
+                        allowed_indices.append(False)
+            
+            # If the spins are different, states at all k are allowed
+            else:
+                allowed_indices = [True for i in range(self._N)]
                     
-        for i in range(self._N):
-            energies = LA.eigvalsh(self._R[i])
-            self._cooper_pair_energies[i] += self._mod_U * (self._epsilon + energies)
+            # Project down the matrix to the independent, allowed states
+            # Filter the rows, then the columns
+            self._R[p_value] = self._R[p_value][allowed_indices][:,allowed_indices]
+                    
+        self._cooper_pair_energies = []
+        
+        # Calculate the energy spectrum (finally)
+        for p_value in range(self._N):
+            energies = LA.eigvalsh(self._R[p_value])
+            self._cooper_pair_energies.append(self._mod_U * energies)
             
         scaled_k = np.linspace(-np.pi, np.pi, self._N + 1)[:-1]
-        # Plot the excitation spectra
-        for i in range(R_dimensionality):
-            plt.plot(scaled_k, np.roll(self._cooper_pair_energies[:,i], self._N // 2), ".", color="blue")
-            
+        scaled_k = np.roll(scaled_k, -(self._N // 2))
+        for i, k_value in enumerate(scaled_k):
+            length = len(self._cooper_pair_energies[i])
+            plt.plot(np.ones(length)*k_value, self._cooper_pair_energies[i], ".", color="blue")
+        
         plt.plot(np.array([-np.pi, np.pi]), self._mod_U*self._epsilon*np.ones(2), "--", color="black", label=r"$\epsilon |U|$")
             
         plt.grid(True)
         plt.legend()
-        plt.title("Cooper Pair Excitation Spectra", fontsize=18)
+        plt.title("Cooper Pair Excitation Spectrum", fontsize=18)
         plt.xlabel(r"$pa$")
         plt.ylabel("Energy")
         plt.show()
         
-    def charge_2_mixed_spectra(self, flat_bands, spins):
+    def charge_2_mixed(self, flat_bands, spins):
         """
         Calculates the electron-hole pair excitation spectra for the specified
         degenerate flat bands. Terminates if the given bands are not
@@ -489,12 +538,12 @@ class excitation_solver:
             
         plt.grid(True)
         plt.legend()
-        plt.title("Charge +2 (Mixed) Excitation Spectra", fontsize=18)
+        plt.title("Charge +2 (Mixed) Excitation Spectrum", fontsize=18)
         plt.xlabel(r"$pa$")
         plt.ylabel("Energy")
         plt.show()
         
-    def trion_3_electrons_spectra(self, flat_bands, spins):
+    def trions_3_electrons_spectra(self, flat_bands, spins):
         """
         Calculates the excitaion spectra of a trion composed of three
         electrons. Highly recommended to keep N low (<= 20).
@@ -589,7 +638,123 @@ class excitation_solver:
             
         plt.grid(True)
         plt.legend()
-        plt.title("Trion (3 Electrons) Excitation Spectra", fontsize=18)
+        plt.title("Trion (3 Electrons) Excitation Spectrum", fontsize=18)
+        plt.xlabel(r"$pa$")
+        plt.ylabel("Energy")
+        plt.show()
+        
+    def trions_3_electrons_new(self, flat_bands, spins):
+        
+        # Check the bands all lie at the same energy. Terminate otherwise.
+        self.check_band_degeneracy(flat_bands)
+        # Epsilon from the UPC can now be assigned
+        self._N_f = len(flat_bands)
+        self._epsilon = self._N_f / self._N_orb
+        
+        # Remove the columns of eigenvectors that do not correspond to the flat bands
+        reduced_eigenvectors = self._eigenvectors[:,:,:,flat_bands]
+        # Check the model obeys the UPC. Terminate otherwise.
+        self.check_UPC(reduced_eigenvectors)
+        
+        # Define the three spins (0 maps to 1, 1 maps to -1 for up and down respectively)
+        # sigma = index 0; sigma prime = index 1; sigma double prime = index 2
+        s = -2*np.array(spins) + 1
+        
+        # Number of rows and columns in R
+        R_dimensionality =  self._N**2 * self._N_f**3
+        self._R = np.zeros((self._N, R_dimensionality, R_dimensionality), dtype="complex128")
+        
+        self._trion_3_electron_energies = np.zeros((self._N, R_dimensionality))
+        
+        # Calculate a component of R for all p at once
+        p = np.arange(self._N)
+        
+        # (I honestly can't see any way right now to avoid 10 for loops...)
+        # Counts the current row of R being filled in
+        R_row_index = 0
+        for m_prime in range(self._N_f):
+            for n_prime in range(self._N_f):
+                for l_prime in range(self._N_f):
+                    for k_1_prime in range(self._N):
+                        for k_2_prime in range(self._N):
+                            # Counts the current column of R being filled in
+                            R_column_index = 0
+                            for m in range(self._N_f):
+                                for n in range(self._N_f):
+                                    for l in range(self._N_f):
+                                        for k_1 in range(self._N):
+                                            for k_2 in range(self._N):
+                                                R_sum = 0.j
+                                                if (((k_1_prime+k_2_prime)%self._N == (k_1+k_2)%self._N) and (m_prime == m)):
+                                                    R_sum += np.sum(np.conj(reduced_eigenvectors[spins[1],(-k_1_prime)%self._N,:,n_prime]) *\
+                                                        reduced_eigenvectors[spins[1],(-k_1)%self._N,:,n] *\
+                                                        np.conj(reduced_eigenvectors[spins[2],(-k_2_prime)%self._N,:,l_prime]) *\
+                                                        reduced_eigenvectors[spins[2],(-k_2)%self._N,:,l]) * s[1] * s[2]
+                                                
+                                                if ((k_1_prime == k_1) and (n_prime == n)):
+                                                    R_sum += np.sum(np.conj(reduced_eigenvectors[spins[0],(p+k_1+k_2_prime)%self._N,:,m_prime]) *\
+                                                        reduced_eigenvectors[spins[0],(p+k_1+k_2)%self._N,:,m] *\
+                                                        np.conj(reduced_eigenvectors[spins[2],(-k_2_prime)%self._N,:,l_prime]) *\
+                                                        reduced_eigenvectors[spins[2],(-k_2)%self._N,:,l], axis=1) * s[0] * s[2]
+                                                        
+                                                if ((k_2_prime == k_2) and (l_prime == l)):
+                                                    R_sum += np.sum(np.conj(reduced_eigenvectors[spins[0],(p+k_1_prime+k_2)%self._N,:,m_prime]) *\
+                                                        reduced_eigenvectors[spins[0],(p+k_1+k_2)%self._N,:,m] *\
+                                                        np.conj(reduced_eigenvectors[spins[1],(-k_1_prime)%self._N,:,n_prime]) *\
+                                                        reduced_eigenvectors[spins[1],(-k_1)%self._N,:,n], axis=1) * s[0] * s[1]
+                                                        
+                                                self._R[:,R_row_index,R_column_index] += R_sum / self._N
+                                                
+                                                R_column_index += 1
+                            
+                            R_row_index += 1
+                            
+        self._R[:,np.arange(R_dimensionality),np.arange(R_dimensionality)] += 1.5 * self._epsilon
+                            
+        # Apply the multitude of corrections to R (assume only 1 flat band for now)
+        q = np.arange(self._N)
+        q_1 = np.broadcast_to(q, (self._N, self._N))
+        q_2 = q_1.flatten()
+        q_1 = q_1.T.flatten()
+        for p_value in range(self._N):
+            q_rearranged = (-p_value-q_1-q_2) % self._N
+            # * 1. to create a copy, not a reference to the original matrix
+            R_copy = self._R[p_value] * 1.
+            if (spins[0] == spins[1]):
+                rearranged_rows = q_rearranged * self._N + q_2
+                self._R[p_value] -= R_copy[rearranged_rows]
+                
+            if (spins[0] == spins[2]):
+                rearranged_rows = q_1 * self._N + q_rearranged
+                self._R[p_value] -= R_copy[rearranged_rows]
+                
+            if (spins[1] == spins[2]):
+                rearranged_rows = q_2 * self._N + q_1
+                self._R[p_value] -= R_copy[rearranged_rows]
+                
+            if (spins[0] == spins[1] == spins[2]):
+                rearranged_rows = q_rearranged * self._N + q_1
+                self._R[p_value] += R_copy[rearranged_rows]
+                rearranged_rows = q_2 * self._N + q_rearranged
+                self._R[p_value] += R_copy[rearranged_rows]
+                
+        print(np.allclose(self._R, np.conj(np.einsum("ijk->ikj", self._R))))
+        
+        for i in range(self._N):
+            energies = LA.eigvalsh(self._R[i])
+            #self._trion_3_electron_energies[i] += self._mod_U * (1.5*self._epsilon + energies)
+            self._trion_3_electron_energies[i] += self._mod_U * energies
+            
+        scaled_k = np.linspace(-np.pi, np.pi, self._N + 1)[:-1]
+        # Plot the excitation spectra
+        for i in range(R_dimensionality):
+            plt.plot(scaled_k, np.roll(self._trion_3_electron_energies[:,i], self._N // 2), ".", color="blue")
+            
+        plt.plot(np.array([-np.pi, np.pi]), 1.5*self._mod_U*self._epsilon*np.ones(2), "--", color="black", label=r"$\frac{3}{2}\epsilon |U|$")
+            
+        plt.grid(True)
+        plt.legend()
+        plt.title("Trion (3 Electrons) Excitation Spectrum", fontsize=18)
         plt.xlabel(r"$pa$")
         plt.ylabel("Energy")
         plt.show()
@@ -705,7 +870,7 @@ class excitation_solver:
             
         plt.grid(True)
         plt.legend()
-        plt.title("Trion (3 Electrons) Excitation Spectra", fontsize=18)
+        plt.title("Trion (3 Electrons) Excitation Spectrum", fontsize=18)
         plt.xlabel(r"$pa$")
         plt.ylabel("Energy")
         plt.show()
@@ -805,7 +970,7 @@ class excitation_solver:
             
         plt.grid(True)
         plt.legend()
-        plt.title("Trion (Mixed) Excitation Spectra", fontsize=18)
+        plt.title("Trion (Mixed) Excitation Spectrum", fontsize=18)
         plt.xlabel(r"$pa$")
         plt.ylabel("Energy")
         plt.show()
