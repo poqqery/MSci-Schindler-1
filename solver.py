@@ -456,7 +456,7 @@ class excitation_solver:
                     
         self._cooper_pair_energies = []
         
-        # Calculate the energy spectrum (finally)
+        # Calculate the energy spectrum
         for p_value in range(self._N):
             energies = LA.eigvalsh(self._R[p_value])
             self._cooper_pair_energies.append(self._mod_U * energies)
@@ -510,25 +510,26 @@ class excitation_solver:
         # Define the two spins (0 maps to 1, 1 maps to -1 for up and down respectively)
         # sigma = index 0; sigma prime = index 1
         s = -2*np.array(spins) + 1
+        spin_product = s[0] * s[1]
         
-        self._charge_2_mixed_energies = []
+        charge_2_mixed_energies = []
         
         # Iterate over each p
-        for i in range(self._N):
+        for p in range(self._N):
             h = 0.j
             # Iterate over each k
-            for j in range(self._N):
-                U_k = reduced_eigenvectors[spins[1],j]
-                P_k = U_k @ np.conjugate(U_k.T)
-                U_p_plus_k = reduced_eigenvectors[spins[0],(i + j) % self._N]
-                P_p_plus_k = U_p_plus_k @ np.conjugate(U_p_plus_k.T)
-                h += P_p_plus_k * np.conjugate(P_k)
+            for k in range(self._N):
+                U_minus_p_minus_k = reduced_eigenvectors[spins[0],(-p-k)%self._N]
+                P_minus_p_minus_k = U_minus_p_minus_k @ np.conj(U_minus_p_minus_k.T)
+                U_minus_k = reduced_eigenvectors[spins[1],(-k)%self._N]
+                P_minus_k = U_minus_k @ np.conj(U_minus_k.T)
+                h += np.conj(P_minus_p_minus_k) * P_minus_k
                 
-            energies = LA.eigvalsh(s[0] * s[1] * (h / self._N))
-            self._charge_2_mixed_energies.append(self._mod_U * (self._epsilon - energies))
-        
-        self._charge_2_mixed_energies = np.array(self._charge_2_mixed_energies)
-        
+            energies = LA.eigvalsh(h / self._N)
+            charge_2_mixed_energies.append(self._mod_U * (self._epsilon - spin_product * energies))
+            
+        self._charge_2_mixed_energies = np.array(charge_2_mixed_energies)
+            
         scaled_k = np.linspace(-np.pi, np.pi, self._N + 1)[:-1]
         # Plot the excitation spectra
         for i in range(self._charge_2_mixed_energies.shape[1]):
@@ -658,13 +659,12 @@ class excitation_solver:
         
         # Define the three spins (0 maps to 1, 1 maps to -1 for up and down respectively)
         # sigma = index 0; sigma prime = index 1; sigma double prime = index 2
-        s = -2*np.array(spins) + 1
+        spins = np.array(spins)
+        s = -2*spins + 1
         
         # Number of rows and columns in R
         R_dimensionality =  self._N**2 * self._N_f**3
         self._R = np.zeros((self._N, R_dimensionality, R_dimensionality), dtype="complex128")
-        
-        self._trion_3_electron_energies = np.zeros((self._N, R_dimensionality))
         
         # Calculate a component of R for all p at once
         p = np.arange(self._N)
@@ -738,19 +738,74 @@ class excitation_solver:
                 rearranged_rows = q_2 * self._N + q_rearranged
                 self._R[p_value] += R_copy[rearranged_rows]
                 
-        print(np.allclose(self._R, np.conj(np.einsum("ijk->ikj", self._R))))
+        # Convert 3-dimensional array, self._R, to a list of matrices at the different p
+        self._R = list(self._R)
         
-        for i in range(self._N):
-            energies = LA.eigvalsh(self._R[i])
-            #self._trion_3_electron_energies[i] += self._mod_U * (1.5*self._epsilon + energies)
-            self._trion_3_electron_energies[i] += self._mod_U * energies
+        # Remove duplicate (non-independent) states and those forbidden by the PEP
+        # Assume only flat band for now
+        for p_value in range(self._N):
+            independent_states = []
+            allowed_indices = []
+            index = 0
+            for k_1 in range(self._N):
+                for k_2 in range(self._N):
+                    # Sorting removes dependence on operator order
+                    momentum_state = np.array([(p_value + k_1 + k_2)%self._N, (-k_1)%self._N, (-k_2)%self._N])
+                    sorted_indices = momentum_state.argsort()
+                    momentum_state = list(momentum_state[sorted_indices])
+                    spin_state = spins[sorted_indices]
+                    
+                    if (momentum_state[0] == momentum_state[1] == momentum_state[2]):
+                        spin_state = np.sort(spin_state)
+                    elif (momentum_state[0] == momentum_state[1]):
+                        spin_state[0:2] = np.sort(spin_state[0:2])
+                    elif (momentum_state[1] == momentum_state[2]):
+                        spin_state[1:3] = np.sort(spin_state[1:3])
+                    
+                    spin_state = list(spin_state)
+                    state = momentum_state + spin_state
+                    if state in independent_states:
+                        # This state is not independent (it has already been counted)
+                        independent = False
+                    else:
+                        independent_states.append(state)
+                        independent = True
+                        
+                    # Check if the state is forbidden by the PEP (no need to check
+                    # if the state is already non-independent)
+                    if (independent == True):
+                        if (np.allclose(0., self._R[p_value][index])):
+                            # Disallowed by the PEP if True
+                            allowed = False
+                        else:
+                            allowed = True
+                    else:
+                        allowed = False
+                        
+                    if ((independent == True) and (allowed == True)):
+                        allowed_indices.append(True)
+                    else:
+                        allowed_indices.append(False)
+                        
+                    index += 1
+                        
+            # Project down the matrix to remove non-independent states
+            self._R[p_value] = self._R[p_value][allowed_indices][:,allowed_indices]
+            
+        self._trion_electrons_energies = []
+        
+        # Calculate the energy spectrum (finally)
+        for p_value in range(self._N):
+            energies = LA.eigvalsh(self._R[p_value])
+            self._trion_electrons_energies.append(self._mod_U * energies)
             
         scaled_k = np.linspace(-np.pi, np.pi, self._N + 1)[:-1]
-        # Plot the excitation spectra
-        for i in range(R_dimensionality):
-            plt.plot(scaled_k, np.roll(self._trion_3_electron_energies[:,i], self._N // 2), ".", color="blue")
-            
-        plt.plot(np.array([-np.pi, np.pi]), 1.5*self._mod_U*self._epsilon*np.ones(2), "--", color="black", label=r"$\frac{3}{2}\epsilon |U|$")
+        scaled_k = np.roll(scaled_k, -(self._N // 2))
+        for i, k_value in enumerate(scaled_k):
+            length = len(self._trion_electrons_energies[i])
+            plt.plot(np.ones(length)*k_value, self._trion_electrons_energies[i], ".", color="red")
+        
+        plt.plot(np.array([-np.pi, np.pi]), 1.5*self._mod_U*self._epsilon*np.ones(2), "--", color="black", label=r"$\frac{3}{2} \epsilon |U|$")
             
         plt.grid(True)
         plt.legend()

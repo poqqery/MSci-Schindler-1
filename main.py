@@ -25,8 +25,8 @@ update_params_sim()
 
 #%%
 
-sigma_2 = np.array([[0., -1.j], [1.j, 0.]])
-sigma_3 = np.array([[1., 0.], [0., -1.]], dtype="complex128")
+sigma_2 = np.array([[0.j, -1.j], [1.j, 0.j]])
+sigma_3 = np.array([[1., 0.j], [0.j, -1.]])
 
 def dimerized_SSH(k, spin):
     """
