@@ -51,6 +51,10 @@ def dimerized_SSH(k, spin):
     
     return h
 
+def SSH(k, spin):
+    
+    return np.array([[0.j, 0. + np.exp(-1.j * k)], [0. + np.exp(1.j * k), 0.]])
+
 def zig_zag(k, spin):
     #assume hopping term is 1
     sigma_1=np.array([[0. , 1.],[1. , 0.]])
