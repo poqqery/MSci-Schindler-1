@@ -356,6 +356,8 @@ class excitation_solver:
         plt.ylabel("Energy")
         plt.show()
         
+        
+        
     def charge_2_spectra_full(self, flat_bands, spins):
         
         # Check the bands all lie at the same energy. Terminate otherwise.
@@ -475,7 +477,9 @@ class excitation_solver:
         plt.title("Cooper Pair Excitation Spectrum", fontsize=18)
         plt.xlabel(r"$pa$")
         plt.ylabel("Energy")
-        plt.show()
+        plt.show()#
+        
+    
         
     def charge_2_mixed(self, flat_bands, spins):
         """
@@ -921,10 +925,10 @@ class excitation_solver:
                                         reduced_eigenvectors[spins[2],(-k_2)%self._N,:,n], axis=1) * s[0] * s[2]
                                 
                                 if (k_1_prime == k_1) and (k_2_prime == k_2):
-                                    R_sum += np.sum(np.conj(reduced_eigenvectors[spins[1],(-k_1_prime)%self._N,:,n]) *\
-                                        reduced_eigenvectors[spins[1],(p+k_1+k_2+k_3)%self._N,:,n] *\
-                                        np.conj(reduced_eigenvectors[spins[2],(-k_3_prime)%self._N,:,n]) *\
-                                        reduced_eigenvectors[spins[2],(-k_3)%self._N,:,n], axis=1) * s[0] * s[3]
+                                    R_sum += np.sum(np.conj(reduced_eigenvectors[spins[0],(p+k_1_prime+k_2_prime+k_3_prime)%self._N,:,n]) *\
+                                        reduced_eigenvectors[spins[0],(p+k_1+k_2+k_3)%self._N,:,n] *\
+                                        np.conj(reduced_eigenvectors[spins[3],(-k_3_prime)%self._N,:,n]) *\
+                                        reduced_eigenvectors[spins[3],(-k_3)%self._N,:,n], axis=1) * s[0] * s[3]
                                 
                                 if ((k_1_prime+k_2_prime+k_3_prime)%self._N == (k_1+k_2+k_3)%self._N) and (k_3_prime == k_3):
                                     R_sum += np.sum(np.conj(reduced_eigenvectors[spins[1],(-k_1_prime)%self._N,:,n]) *\
@@ -952,7 +956,80 @@ class excitation_solver:
                             
         self._R[:,np.arange(R_dimensionality),np.arange(R_dimensionality)] += 2 * self._epsilon
         
+        
+        #corrections for up up down down
+        q = np.arange(self._N,dtype='int8')
+        q=np.broadcast_to(q,(self._N,self._N,self._N))
+        q_1 = np.array([[i]*self._N**2 for i in range(self._N)]).flatten()
+        q_2 = np.einsum("ijk->ikj",q).flatten()
+        q_3 = q.flatten()
+        
+        for p_value in range(self._N):
+            q_rearranged = (-p_value-q_1-q_2-q_3) % self._N
+            # * 1. to create a copy, not a reference to the original matrix
+            R_copy = self._R[p_value] * 1.
+            
+            rearranged_rows = q_1*self._N**2 + q_3*self._N + q_2
+            self._R[p_value] -= R_copy[rearranged_rows]
+            
+            rearranged_rows = q_rearranged*self._N**2+q_2*self._N+q_3
+            self._R[p_value] -= R_copy[rearranged_rows]
+            
+            rearranged_rows = q_rearranged*self._N**2 + q_3*self._N + q_2
+            self._R[p_value] += R_copy[rearranged_rows]
+            
         self._R = list(self._R)
+        
+        for p_value in range(self._N):
+            independent_states = []
+            allowed_indices = []
+            index = 0
+            for k_1 in range(self._N):
+                for k_2 in range(self._N):
+                    for k_3 in range(self._N):
+                    # Sorting removes dependence on operator order
+                        momentum_state = np.array([(p_value + k_1 + k_2+k_3)%self._N, (-k_1)%self._N, (-k_2)%self._N, (-k_3)%self._N])
+                        sorted_indices = momentum_state.argsort()
+                        momentum_state = list(momentum_state[sorted_indices])
+                        spin_state = spins[sorted_indices]                
+                    
+                        if (momentum_state[0] == momentum_state[1]):
+                            spin_state[0:2] = np.sort(spin_state[0:2])
+                        if (momentum_state[2] == momentum_state[2]):
+                            spin_state[2:3] = np.sort(spin_state[2:3])
+                            
+                        spin_state = list(spin_state)
+                        state = momentum_state + spin_state
+                        if state in independent_states:
+                            # This state is not independent (it has already been counted)
+                            independent = False
+                        else:
+                            independent_states.append(state)
+                            independent = True
+                            
+                        # Check if the state is forbidden by the PEP (no need to check
+                        # if the state is already non-independent)
+                        if (independent == True):
+                            if (np.allclose(0., self._R[p_value][index])):
+                                # Disallowed by the PEP if True
+                                allowed = False
+                            else:
+                                allowed = True
+                        else:
+                            allowed = False
+                        independent=True   
+                        if ((independent == True) and (allowed == True)):
+                            allowed_indices.append(True)
+                        else:
+                            allowed_indices.append(False)
+                        
+                        index += 1
+                        
+            # Project down the matrix to remove non-independent states
+            self._R[p_value] = self._R[p_value][allowed_indices][:,allowed_indices]
+        
+        
+        
         
         self._four_electrons_energies = []
         
