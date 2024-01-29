@@ -8,6 +8,7 @@ Created on Sat Oct 21 01:29:11 2023
 import numpy as np
 import matplotlib.pyplot as plt
 from solver import excitation_solver
+from copy import deepcopy
 
 def update_params_sim():
     params = {
@@ -25,8 +26,9 @@ update_params_sim()
 
 #%%
 
-sigma_2 = np.array([[0.j, -1.j], [1.j, 0.j]])
-sigma_3 = np.array([[1., 0.j], [0.j, -1.]])
+sigma_1 = np.array([[0., 1.], [1., 0.]], dtype="complex128")
+sigma_2 = np.array([[0., -1.j], [1.j, 0.]])
+sigma_3 = np.array([[1., 0.], [0., -1.]], dtype="complex128")
 
 def dimerized_SSH(k, spin):
     """
@@ -43,7 +45,7 @@ def dimerized_SSH(k, spin):
     Returns
     -------
     h : ndarray of complex128
-        Matrix of the Hamiltonian at the given k with the given spin.
+        Hamiltonian matrix at the given k with the given spin.
 
     """
     
@@ -55,13 +57,41 @@ def SSH(k, spin):
     
     return np.array([[0.j, 0. + np.exp(-1.j * k)], [0. + np.exp(1.j * k), 0.]])
 
-def zig_zag(k, spin):
-    #assume hopping term is 1
-    sigma_1=np.array([[0. , 1.],[1. , 0.]])
-    sigma_2 = np.array([[0., -1.j], [1.j, 0.]])
-    
-    h=np.sqrt(2)*np.cos(k)*np.array([[ 1. , 0.],[ 0., 0.]])+(1+np.cos(k))*sigma_1+np.sin(k)*sigma_2
-    
-    return h
+N = 10
 
-test = excitation_solver(1., dimerized_SSH, 1., 24)
+test = excitation_solver(1., dimerized_SSH, 1., N)
+
+#%% Overlaying the minimum energies of two independent, spin-zero Cooper pairs
+# onto a 4-particle spin-zero spectrum
+
+test.charge_2_spectra([0], plot=False)
+test.charge_4_electrons([0], [0, 0, 1, 1], plot=False)
+
+charge_2_energies = deepcopy(test._charge_2_energies)
+charge_4_energies = deepcopy(test._four_electrons_energies)
+rolled_k = np.roll(np.linspace(-np.pi, np.pi, N+1)[:-1], -(N // 2))
+
+lowest_energies = np.ones(N) * 10.
+
+for i in range(N):
+    for j in range(N):
+        lowest_energy = np.min(charge_2_energies[i]) + np.min(charge_2_energies[j])
+        p = (i + j) % N
+        
+        if (lowest_energy < lowest_energies[p]):
+            lowest_energies[p] = lowest_energy * 1.
+            
+            
+for i, k_value in enumerate(rolled_k):
+    length = len(charge_4_energies[i])
+    plt.plot(np.ones(length)*k_value, charge_4_energies[i], ".", color="green")
+
+plt.plot(rolled_k, lowest_energies, ".", color="blue")
+plt.plot(np.array([-np.pi, np.pi]), 2.*1.*0.5*np.ones(2), "--", color="black", label=r"$2 \epsilon |U|$")
+    
+plt.grid(True)
+plt.legend()
+plt.title("4 Electrons Excitation Spectrum", fontsize=18)
+plt.xlabel(r"$pa$")
+plt.ylabel("Energy")
+plt.show()
