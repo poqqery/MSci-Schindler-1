@@ -1071,19 +1071,68 @@ class excitation_solver:
         q_2 = np.einsum("ijk->ikj",q).flatten()
         q_3 = q.flatten()
         
+       
+        
         for p_value in range(self._N):
             q_rearranged = (-p_value-q_1-q_2-q_3) % self._N
             # * 1. to create a copy, not a reference to the original matrix
             R_copy = self._R[p_value] * 1.
             
-            rearranged_rows = q_1*self._N**2 + q_3*self._N + q_2
-            self._R[p_value] -= R_copy[rearranged_rows]
+            #term 1
+            if spins[0] == spins[3] and spins[1] == spins[2]:
+                rearranged_rows = q_2*self._N**2 + q_1*self._N + q_rearranged
+                self._R[p_value] += R_copy[rearranged_rows]
             
-            rearranged_rows = q_rearranged*self._N**2+q_2*self._N+q_3
-            self._R[p_value] -= R_copy[rearranged_rows]
+            #term 2
+            if spins[0] == spins[1] == spins[2] == spins[3]:
+                rearranged_rows = q_3*self._N**2 + q_1*self._N + q_rearranged
+                self._R[p_value] -= R_copy[rearranged_rows]
             
-            rearranged_rows = q_rearranged*self._N**2 + q_3*self._N + q_2
-            self._R[p_value] += R_copy[rearranged_rows]
+            #term 3
+            if spins[0] == spins[3]: 
+                rearranged_rows = q_1*self._N**2 + q_2*self._N + q_rearranged
+                self._R[p_value] -= R_copy[rearranged_rows]
+                
+            #term 4
+            if spins[0] ==spins[2] == spins[3]:
+                rearranged_rows = q_1*self._N**2 + q_3*self._N + q_rearranged
+                self._R[p_value] += R_copy[rearranged_rows]
+                
+            #term 5
+            if spins[0] == spins[1] == spins[3]:
+                rearranged_rows = q_3*self._N**2 + q_2*self._N + q_rearranged
+                self._R[p_value] -= R_copy[rearranged_rows]
+                
+            #term 6
+            if spins[0] == spins[1] == spins[2] == spins[3]:
+                rearranged_rows = q_2*self._N**2 + q_3*self._N + q_rearranged
+                self._R[p_value] -= R_copy[rearranged_rows]
+                
+            #term 7
+            if spins[0] == spins[1] == spins[2] == spins[3]:
+                rearranged_rows = q_2*self._N**2 + q_rearranged*self._N + q_1
+                self._R[p_value] -= R_copy[rearranged_rows]
+            
+            #term 8
+            if spins[1] == spins[3] and spins[0] == spins[2]:
+                rearranged_rows = q_3*self._N**2 + q_rearranged*self._N + q_1
+                self._R[p_value] += R_copy[rearranged_rows]
+                
+            #term 9
+            if spins[0] == spins[2] == spins[3]:
+                rearranged_rows = q_1*self._N**2 + q_rearranged*self._N + q_2
+                self._R[p_value] += R_copy[rearranged_rows]
+            
+            #term 10
+            if spins[0] == spins[2]:
+                rearranged_rows = q_1*self._N**2 + q_rearranged*self._N + q_3
+                self._R[p_value] -= R_copy[rearranged_rows]
+                
+            #term 11:
+            if spins[0] == spins[1] == spins[2] == spins[3]:
+                rearranged_rows = q_3*self._N**2 + q_rearranged*self._N + q_2
+                self._R[p_value] -= R_copy[rearranged_rows]
+            
             
         self._R = list(self._R)
         
