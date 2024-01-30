@@ -668,7 +668,7 @@ class excitation_solver:
                         current = 0
                         for momentum in unique_momenta:
                             count = sum(momentum_state == momentum)
-                            spin_state[current:count] = np.sort(spin_state[current:count])
+                            spin_state[current:current+count] = np.sort(spin_state[current:current+count])
                             current += count
                     
                     state = list(momentum_state) + list(spin_state)
@@ -980,7 +980,6 @@ class excitation_solver:
     
     def charge_4_electrons(self, flat_bands, spins, plot=True):
             
-        #this only does one flat band for simplicity
         # Check the bands all lie at the same energy. Terminate otherwise.
         self.check_band_degeneracy(flat_bands)
         # Epsilon from the UPC can now be assigned
@@ -1074,57 +1073,57 @@ class excitation_solver:
             # * 1. to create a copy, not a reference to the original matrix
             R_copy = self._R[p_value] * 1.
             
-            #term 1
-            if (spins[0] == spins[3] and spins[1] == spins[2]):
+            # 1
+            if ((spins[0] == spins[3]) and (spins[1] == spins[2])):
                 rearranged_rows = q_2*self._N**2 + q_1*self._N + q_rearranged
                 self._R[p_value] += R_copy[rearranged_rows]
             
-            #term 2
+            # 2
             if (spins[0] == spins[1] == spins[2] == spins[3]):
                 rearranged_rows = q_3*self._N**2 + q_1*self._N + q_rearranged
                 self._R[p_value] -= R_copy[rearranged_rows]
             
-            #term 3
-            if spins[0] == spins[3]: 
+            # 3
+            if (spins[0] == spins[3]): 
                 rearranged_rows = q_1*self._N**2 + q_2*self._N + q_rearranged
                 self._R[p_value] -= R_copy[rearranged_rows]
                 
-            #term 4
-            if (spins[0] ==spins[2] == spins[3]):
+            # 4
+            if ((spins[0] == spins[3]) and (spins[0] == spins[2]) and (spins[2] == spins[3])):
                 rearranged_rows = q_1*self._N**2 + q_3*self._N + q_rearranged
                 self._R[p_value] += R_copy[rearranged_rows]
                 
-            #term 5
-            if (spins[0] == spins[1] == spins[3]):
+            # 5
+            if ((spins[0] == spins[3]) and (spins[0] == spins[1]) and (spins[1] == spins[3])):
                 rearranged_rows = q_3*self._N**2 + q_2*self._N + q_rearranged
                 self._R[p_value] += R_copy[rearranged_rows]
                 
-            #term 6
+            # 6
             if (spins[0] == spins[1] == spins[2] == spins[3]):
                 rearranged_rows = q_2*self._N**2 + q_3*self._N + q_rearranged
                 self._R[p_value] -= R_copy[rearranged_rows]
                 
-            #term 7
+            # 7
             if (spins[0] == spins[1] == spins[2] == spins[3]):
                 rearranged_rows = q_2*self._N**2 + q_rearranged*self._N + q_1
                 self._R[p_value] -= R_copy[rearranged_rows]
             
-            #term 8
-            if (spins[1] == spins[3] and spins[0] == spins[2]):
+            # 8
+            if ((spins[0] == spins[2]) and (spins[1] == spins[3])):
                 rearranged_rows = q_3*self._N**2 + q_rearranged*self._N + q_1
                 self._R[p_value] += R_copy[rearranged_rows]
                 
-            #term 9
-            if (spins[0] == spins[2] == spins[3]):
+            # 9
+            if ((spins[0] == spins[2]) and (spins[2] == spins[3]) and (spins[0] == spins[3])):
                 rearranged_rows = q_1*self._N**2 + q_rearranged*self._N + q_2
                 self._R[p_value] += R_copy[rearranged_rows]
             
-            #term 10
-            if spins[0] == spins[2]:
+            # 10
+            if (spins[0] == spins[2]):
                 rearranged_rows = q_1*self._N**2 + q_rearranged*self._N + q_3
                 self._R[p_value] -= R_copy[rearranged_rows]
                 
-            #term 11:
+            # 11:
             if (spins[0] == spins[1] == spins[2] == spins[3]):
                 rearranged_rows = q_3*self._N**2 + q_rearranged*self._N + q_2
                 self._R[p_value] -= R_copy[rearranged_rows]
@@ -1135,7 +1134,7 @@ class excitation_solver:
                 self._R[p_value] += R_copy[rearranged_rows]
             
             # 13
-            if ((spins[0] == spins[1]) and (spins[1] == spins[3]) and (spins[3] == spins[0])):
+            if ((spins[0] == spins[1]) and (spins[1] == spins[3]) and (spins[0] == spins[3])):
                 rearranged_rows = q_rearranged*self._N**2 + q_2*self._N + q_1
                 self._R[p_value] += R_copy[rearranged_rows]
                 
@@ -1155,12 +1154,12 @@ class excitation_solver:
                 self._R[p_value] += R_copy[rearranged_rows]
                 
             # 17
-            if (spins[0] == spins[1] and (spins[2] == spins[3])):
+            if ((spins[0] == spins[1]) and (spins[2] == spins[3])):
                 rearranged_rows = q_rearranged*self._N**2 + q_3*self._N + q_2
                 self._R[p_value] += R_copy[rearranged_rows]
                 
             # 18
-            if ((spins[0] == spins[1])):
+            if (spins[0] == spins[1]):
                 rearranged_rows = q_rearranged*self._N**2 + q_2*self._N + q_3
                 self._R[p_value] -= R_copy[rearranged_rows]
                 
@@ -1208,13 +1207,13 @@ class excitation_solver:
                         spin_state = spins[sorted_indices]
                             
                         unique_momenta = np.unique(momentum_state)
-                        # Everything is automatically sorted if all three momenta are different;
+                        # Everything is automatically sorted if all momenta are different;
                         # check otherwise that spins are also sorted
                         if (len(unique_momenta) != 4):
                             current = 0
                             for momentum in unique_momenta:
                                 count = sum(momentum_state == momentum)
-                                spin_state[current:count] = np.sort(spin_state[current:count])
+                                spin_state[current:current+count] = np.sort(spin_state[current:current+count])
                                 current += count
                         
                         state = list(momentum_state) + list(spin_state)
