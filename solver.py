@@ -1063,15 +1063,11 @@ class excitation_solver:
                             
         self._R[:,np.arange(R_dimensionality),np.arange(R_dimensionality)] += 2 * self._epsilon
         
-        
-        #corrections for up up down down
         q = np.arange(self._N)
         q=np.broadcast_to(q,(self._N,self._N,self._N))
         q_1 = np.array([[i]*self._N**2 for i in range(self._N)]).flatten()
         q_2 = np.einsum("ijk->ikj",q).flatten()
         q_3 = q.flatten()
-        
-       
         
         for p_value in range(self._N):
             q_rearranged = (-p_value-q_1-q_2-q_3) % self._N
@@ -1079,12 +1075,12 @@ class excitation_solver:
             R_copy = self._R[p_value] * 1.
             
             #term 1
-            if spins[0] == spins[3] and spins[1] == spins[2]:
+            if (spins[0] == spins[3] and spins[1] == spins[2]):
                 rearranged_rows = q_2*self._N**2 + q_1*self._N + q_rearranged
                 self._R[p_value] += R_copy[rearranged_rows]
             
             #term 2
-            if spins[0] == spins[1] == spins[2] == spins[3]:
+            if (spins[0] == spins[1] == spins[2] == spins[3]):
                 rearranged_rows = q_3*self._N**2 + q_1*self._N + q_rearranged
                 self._R[p_value] -= R_copy[rearranged_rows]
             
@@ -1094,32 +1090,32 @@ class excitation_solver:
                 self._R[p_value] -= R_copy[rearranged_rows]
                 
             #term 4
-            if spins[0] ==spins[2] == spins[3]:
+            if (spins[0] ==spins[2] == spins[3]):
                 rearranged_rows = q_1*self._N**2 + q_3*self._N + q_rearranged
                 self._R[p_value] += R_copy[rearranged_rows]
                 
             #term 5
-            if spins[0] == spins[1] == spins[3]:
+            if (spins[0] == spins[1] == spins[3]):
                 rearranged_rows = q_3*self._N**2 + q_2*self._N + q_rearranged
                 self._R[p_value] -= R_copy[rearranged_rows]
                 
             #term 6
-            if spins[0] == spins[1] == spins[2] == spins[3]:
+            if (spins[0] == spins[1] == spins[2] == spins[3]):
                 rearranged_rows = q_2*self._N**2 + q_3*self._N + q_rearranged
                 self._R[p_value] -= R_copy[rearranged_rows]
                 
             #term 7
-            if spins[0] == spins[1] == spins[2] == spins[3]:
+            if (spins[0] == spins[1] == spins[2] == spins[3]):
                 rearranged_rows = q_2*self._N**2 + q_rearranged*self._N + q_1
                 self._R[p_value] -= R_copy[rearranged_rows]
             
             #term 8
-            if spins[1] == spins[3] and spins[0] == spins[2]:
+            if (spins[1] == spins[3] and spins[0] == spins[2]):
                 rearranged_rows = q_3*self._N**2 + q_rearranged*self._N + q_1
                 self._R[p_value] += R_copy[rearranged_rows]
                 
             #term 9
-            if spins[0] == spins[2] == spins[3]:
+            if (spins[0] == spins[2] == spins[3]):
                 rearranged_rows = q_1*self._N**2 + q_rearranged*self._N + q_2
                 self._R[p_value] += R_copy[rearranged_rows]
             
@@ -1129,13 +1125,75 @@ class excitation_solver:
                 self._R[p_value] -= R_copy[rearranged_rows]
                 
             #term 11:
-            if spins[0] == spins[1] == spins[2] == spins[3]:
+            if (spins[0] == spins[1] == spins[2] == spins[3]):
                 rearranged_rows = q_3*self._N**2 + q_rearranged*self._N + q_2
                 self._R[p_value] -= R_copy[rearranged_rows]
             
+            # 12
+            if ((spins[0] == spins[2]) and (spins[0] == spins[1]) and (spins[1] == spins[2])):
+                rearranged_rows = q_2*self._N**2 + q_rearranged*self._N + q_3
+                self._R[p_value] += R_copy[rearranged_rows]
             
+            # 13
+            if ((spins[0] == spins[1]) and (spins[1] == spins[3]) and (spins[3] == spins[0])):
+                rearranged_rows = q_rearranged*self._N**2 + q_2*self._N + q_1
+                self._R[p_value] += R_copy[rearranged_rows]
+                
+            # 14
+            if (spins[0] == spins[1] == spins[2] == spins[3]):
+                rearranged_rows = q_rearranged*self._N**2 + q_3*self._N + q_1
+                self._R[p_value] -= R_copy[rearranged_rows]
+                
+            # 15
+            if (spins[0] == spins[1] == spins[2] == spins[3]):
+                rearranged_rows = q_rearranged*self._N**2 + q_1*self._N + q_2
+                self._R[p_value] -= R_copy[rearranged_rows]
+                
+            # 16
+            if ((spins[0] == spins[1]) and (spins[1] == spins[2]) and (spins[0] == spins[2])):
+                rearranged_rows = q_rearranged*self._N**2 + q_1*self._N + q_3
+                self._R[p_value] += R_copy[rearranged_rows]
+                
+            # 17
+            if (spins[0] == spins[1] and (spins[2] == spins[3])):
+                rearranged_rows = q_rearranged*self._N**2 + q_3*self._N + q_2
+                self._R[p_value] += R_copy[rearranged_rows]
+                
+            # 18
+            if ((spins[0] == spins[1])):
+                rearranged_rows = q_rearranged*self._N**2 + q_2*self._N + q_3
+                self._R[p_value] -= R_copy[rearranged_rows]
+                
+            # 19
+            if (spins[1] == spins[3]):
+                rearranged_rows = q_3*self._N**2 + q_2*self._N + q_1
+                self._R[p_value] -= R_copy[rearranged_rows]
+                
+            # 20
+            if ((spins[1] == spins[3]) and (spins[1] == spins[2]) and (spins[2] == spins[3])):
+                rearranged_rows = q_2*self._N**2 + q_3*self._N + q_1
+                self._R[p_value] += R_copy[rearranged_rows]
+                
+            # 21
+            if ((spins[1] == spins[2]) and (spins[2] == spins[3]) and (spins[1] == spins[3])):
+                rearranged_rows = q_3*self._N**2 + q_1*self._N + q_2
+                self._R[p_value] += R_copy[rearranged_rows]
+                
+            # 22
+            if (spins[1] == spins[2]):
+                rearranged_rows = q_2*self._N**2 + q_1*self._N + q_3
+                self._R[p_value] -= R_copy[rearranged_rows]
+                
+            # 23
+            if (spins[2] == spins[2]):
+                rearranged_rows = q_1*self._N**2 + q_3*self._N + q_2
+                self._R[p_value] -= R_copy[rearranged_rows]
+        
+        # Convert 3-dimensional array, self._R, to a list of matrices at the different p
         self._R = list(self._R)
         
+        # Remove duplicate (non-independent) states and those forbidden by the PEP
+        # Assume only one flat band for now
         for p_value in range(self._N):
             independent_states = []
             allowed_indices = []
@@ -1143,19 +1201,23 @@ class excitation_solver:
             for k_1 in range(self._N):
                 for k_2 in range(self._N):
                     for k_3 in range(self._N):
-                    # Sorting removes dependence on operator order
-                        momentum_state = np.array([(p_value + k_1 + k_2+k_3)%self._N, (-k_1)%self._N, (-k_2)%self._N, (-k_3)%self._N])
+                        # Sorting removes (some) dependence on operator order
+                        momentum_state = np.array([(p_value + k_1 + k_2 + k_3)%self._N, (-k_1)%self._N, (-k_2)%self._N, (-k_3)%self._N])
                         sorted_indices = momentum_state.argsort()
-                        momentum_state = list(momentum_state[sorted_indices])
-                        spin_state = spins[sorted_indices]                
-                    
-                        if (momentum_state[0] == momentum_state[1]):
-                            spin_state[0:2] = np.sort(spin_state[0:2])
-                        if (momentum_state[2] == momentum_state[2]):
-                            spin_state[2:3] = np.sort(spin_state[2:3])
+                        momentum_state = momentum_state[sorted_indices]
+                        spin_state = spins[sorted_indices]
                             
-                        spin_state = list(spin_state)
-                        state = momentum_state + spin_state
+                        unique_momenta = np.unique(momentum_state)
+                        # Everything is automatically sorted if all three momenta are different;
+                        # check otherwise that spins are also sorted
+                        if (len(unique_momenta) != 4):
+                            current = 0
+                            for momentum in unique_momenta:
+                                count = sum(momentum_state == momentum)
+                                spin_state[current:count] = np.sort(spin_state[current:count])
+                                current += count
+                        
+                        state = list(momentum_state) + list(spin_state)
                         if state in independent_states:
                             # This state is not independent (it has already been counted)
                             independent = False
@@ -1173,15 +1235,15 @@ class excitation_solver:
                                 allowed = True
                         else:
                             allowed = False
-                        independent=True   
+                            
                         if ((independent == True) and (allowed == True)):
                             allowed_indices.append(True)
                         else:
                             allowed_indices.append(False)
-                        
+                            
                         index += 1
                         
-            # Project down the matrix to remove non-independent states
+            # Project down the matrix to remove forbidden/non-independent states
             self._R[p_value] = self._R[p_value][allowed_indices][:,allowed_indices]
         
         self._four_electrons_energies = []
