@@ -1097,7 +1097,7 @@ class excitation_solver:
             #term 5
             if (spins[0] == spins[1] == spins[3]):
                 rearranged_rows = q_3*self._N**2 + q_2*self._N + q_rearranged
-                self._R[p_value] -= R_copy[rearranged_rows]
+                self._R[p_value] += R_copy[rearranged_rows]
                 
             #term 6
             if (spins[0] == spins[1] == spins[2] == spins[3]):
