@@ -1292,7 +1292,7 @@ class excitation_solver:
         # of them like before (i.e. don't evaluate at all p at once)
         # This will increase processing time a bit but will allow the use of
         # sparse matrices
-        self._four_electrons_energies = []
+        self._four_electrons_energies = np.zeros((self._N, num_eigenvalues))
         
         q = np.arange(self._N)
         q=np.broadcast_to(q,(self._N,self._N,self._N))
@@ -1552,7 +1552,7 @@ class excitation_solver:
             
             # Find only some of the lowest energies (eigenvalues)
             energies = sparse.linalg.eigsh(R, k=num_eigenvalues, which="SA", return_eigenvectors=False)
-            self._four_electrons_energies.append(energies)
+            self._four_electrons_energies[p] += energies
             
             print("p = %.i complete" % (p))
             
