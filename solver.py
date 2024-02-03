@@ -9,6 +9,7 @@ import numpy as np
 import numpy.linalg as LA
 from scipy import sparse
 import matplotlib.pyplot as plt
+from copy import deepcopy
 
 class NoFlatBandException(Exception):
     "Raised in the absence of flat bands."
@@ -997,7 +998,7 @@ class excitation_solver:
         s = -2*spins + 1
         
         # Number of rows and columns in R
-        R_dimensionality =  self._N**3
+        R_dimensionality = self._N**3
         self._R = np.zeros((self._N, R_dimensionality, R_dimensionality), dtype="complex128")
         
         # Calculate a component of R for all p at once
@@ -1253,6 +1254,309 @@ class excitation_solver:
             self._four_electrons_energies.append(self._mod_U * energies)
             
         if (plot == True):
+            scaled_k = np.linspace(-np.pi, np.pi, self._N + 1)[:-1]
+            scaled_k = np.roll(scaled_k, -(self._N // 2))
+            for i, k_value in enumerate(scaled_k):
+                length = len(self._four_electrons_energies[i])
+                plt.plot(np.ones(length)*k_value, self._four_electrons_energies[i], ".", color="green")
+            
+            plt.plot(np.array([-np.pi, np.pi]), 2*self._mod_U*self._epsilon*np.ones(2), "--", color="black", label=r"$2 \epsilon |U|$")
+                
+            plt.grid(True)
+            plt.legend()
+            plt.title("4 Electrons Excitation Spectrum", fontsize=18)
+            plt.xlabel(r"$pa$")
+            plt.ylabel("Energy")
+            plt.show()
+            
+    def four_electrons_sparse(self, flat_bands, spins, num_eigenvalues=5, plot=True):
+        # Check the bands all lie at the same energy. Terminate otherwise.
+        self.check_band_degeneracy(flat_bands)
+        # Epsilon from the UPC can now be assigned
+        self._N_f = len(flat_bands)
+        self._epsilon = self._N_f / self._N_orb
+        
+        # Remove the columns of eigenvectors that do not correspond to the flat bands
+        reduced_eigenvectors = self._eigenvectors[:,:,:,flat_bands]
+        # Check the model obeys the UPC. Terminate otherwise.
+        self.check_UPC(reduced_eigenvectors)
+        
+        # Define the three spins (0 maps to 1, 1 maps to -1 for up and down respectively)
+        # sigma = index 0; sigma prime = index 1; sigma double prime = index 2
+        spins = np.array(spins)
+        s = -2*spins + 1
+        
+        R_dimensionality = self._N**3
+        
+        # Calculate the matrices one at a time to save space; don't store all
+        # of them like before (i.e. don't evaluate at all p at once)
+        # This will increase processing time a bit but will allow the use of
+        # sparse matrices
+        self._four_electrons_energies = []
+        
+        q = np.arange(self._N)
+        q=np.broadcast_to(q,(self._N,self._N,self._N))
+        q_1 = np.array([[i]*self._N**2 for i in range(self._N)]).flatten()
+        q_2 = np.einsum("ijk->ikj",q).flatten()
+        q_3 = q.flatten()
+        
+        # Assume one flat band for now
+        for p in range(self._N):
+            row_indices = []
+            col_indices = []
+            values = []
+            R_row_index = 0
+            for k_1_prime in range(self._N):
+                for k_2_prime in range(self._N):
+                    for k_3_prime in range(self._N):
+                        R_column_index = 0
+                        for k_1 in range(self._N):
+                            for k_2 in range(self._N):
+                                for k_3 in range(self._N):
+                                    R_sum = 0.j
+                                    
+                                    if ((k_2_prime == k_2) and (k_3_prime == k_3)):
+                                        R_sum += np.sum(np.conj(reduced_eigenvectors[spins[0],(p+k_1_prime+k_2_prime+k_3_prime)%self._N,:,0]) *\
+                                            reduced_eigenvectors[spins[0],(p+k_1+k_2+k_3)%self._N,:,0] *\
+                                            np.conj(reduced_eigenvectors[spins[1],(-k_1_prime)%self._N,:,0]) *\
+                                            reduced_eigenvectors[spins[1],(-k_1)%self._N,:,0]) * s[0] * s[1]
+                                            
+                                    if ((k_1_prime == k_1) and (k_3_prime == k_3)):
+                                        R_sum += np.sum(np.conj(reduced_eigenvectors[spins[0],(p+k_1_prime+k_2_prime+k_3_prime)%self._N,:,0]) *\
+                                            reduced_eigenvectors[spins[0],(p+k_1+k_2+k_3)%self._N,:,0] *\
+                                            np.conj(reduced_eigenvectors[spins[2],(-k_2_prime)%self._N,:,0]) *\
+                                            reduced_eigenvectors[spins[2],(-k_2)%self._N,:,0]) * s[0] * s[2]
+                                            
+                                    if ((k_1_prime == k_1) and (k_2_prime == k_2)):
+                                        R_sum += np.sum(np.conj(reduced_eigenvectors[spins[0],(p+k_1_prime+k_2_prime+k_3_prime)%self._N,:,0]) *\
+                                            reduced_eigenvectors[spins[0],(p+k_1+k_2+k_3)%self._N,:,0] *\
+                                            np.conj(reduced_eigenvectors[spins[3],(-k_3_prime)%self._N,:,0]) *\
+                                            reduced_eigenvectors[spins[3],(-k_3)%self._N,:,0]) * s[0] * s[3]
+                                            
+                                    if ((k_1_prime+k_2_prime+k_3_prime)%self._N == (k_1+k_2+k_3)%self._N):
+                                        if (k_3_prime == k_3):
+                                            R_sum += np.sum(np.conj(reduced_eigenvectors[spins[1],(-k_1_prime)%self._N,:,0]) *\
+                                                reduced_eigenvectors[spins[1],(-k_1)%self._N,:,0] *\
+                                                np.conj(reduced_eigenvectors[spins[2],(-k_2_prime)%self._N,:,0]) *\
+                                                reduced_eigenvectors[spins[2],(-k_2)%self._N,:,0]) * s[1] * s[2]
+                                                
+                                        if (k_2_prime == k_2):
+                                            R_sum += np.sum(np.conj(reduced_eigenvectors[spins[1],(-k_1_prime)%self._N,:,0]) *\
+                                                reduced_eigenvectors[spins[1],(-k_1)%self._N,:,0] *\
+                                                np.conj(reduced_eigenvectors[spins[3],(-k_3_prime)%self._N,:,0]) *\
+                                                reduced_eigenvectors[spins[3],(-k_3)%self._N,:,0]) * s[1] * s[3]
+                                                
+                                        if (k_1_prime == k_1):
+                                            R_sum += np.sum(np.conj(reduced_eigenvectors[spins[2],(-k_2_prime)%self._N,:,0]) *\
+                                                reduced_eigenvectors[spins[2],(-k_2)%self._N,:,0] *\
+                                                np.conj(reduced_eigenvectors[spins[3],(-k_3_prime)%self._N,:,0]) *\
+                                                reduced_eigenvectors[spins[3],(-k_3)%self._N,:,0]) * s[2] * s[3]
+                                                
+                                    if (R_sum != 0.j):
+                                        # Specify only if it is non-zero, otherwise
+                                        # store as an implicit zero.
+                                        row_indices.append(R_row_index)
+                                        col_indices.append(R_column_index)
+                                        values.append(R_sum / self._N)
+                                        
+                                    if (R_row_index == R_column_index):
+                                        # Add the constant shift on the diagonal
+                                        row_indices.append(R_row_index)
+                                        col_indices.append(R_column_index)
+                                        values.append(2. * self._epsilon)
+                                                
+                                    R_column_index += 1
+                        
+                        R_row_index += 1
+                        
+            # Construct R as a sparse CSR matrix
+            R = sparse.csr_array((values, (row_indices, col_indices)), shape=(R_dimensionality, R_dimensionality))
+            
+            # Apply corrections for the PEP
+            q_rearranged = (-p-q_1-q_2-q_3) % self._N
+            # * 1. to create a copy, not a reference to the original matrix
+            R_copy = deepcopy(R)
+            
+            # There is no meaning to this if statement; it just allows the huge
+            # block of if statements to be collapsed
+            if (True==True):
+                # 1
+                if ((spins[0] == spins[3]) and (spins[1] == spins[2])):
+                    rearranged_rows = q_2*self._N**2 + q_1*self._N + q_rearranged
+                    R += R_copy[rearranged_rows,:]
+                
+                # 2
+                if (spins[0] == spins[1] == spins[2] == spins[3]):
+                    rearranged_rows = q_3*self._N**2 + q_1*self._N + q_rearranged
+                    R -= R_copy[rearranged_rows,:]
+                
+                # 3
+                if (spins[0] == spins[3]): 
+                    rearranged_rows = q_1*self._N**2 + q_2*self._N + q_rearranged
+                    R -= R_copy[rearranged_rows,:]
+                    
+                # 4
+                if ((spins[0] == spins[3]) and (spins[0] == spins[2]) and (spins[2] == spins[3])):
+                    rearranged_rows = q_1*self._N**2 + q_3*self._N + q_rearranged
+                    R += R_copy[rearranged_rows,:]
+                    
+                # 5
+                if ((spins[0] == spins[3]) and (spins[0] == spins[1]) and (spins[1] == spins[3])):
+                    rearranged_rows = q_3*self._N**2 + q_2*self._N + q_rearranged
+                    R += R_copy[rearranged_rows,:]
+                    
+                # 6
+                if (spins[0] == spins[1] == spins[2] == spins[3]):
+                    rearranged_rows = q_2*self._N**2 + q_3*self._N + q_rearranged
+                    R -= R_copy[rearranged_rows,:]
+                    
+                # 7
+                if (spins[0] == spins[1] == spins[2] == spins[3]):
+                    rearranged_rows = q_2*self._N**2 + q_rearranged*self._N + q_1
+                    R -= R_copy[rearranged_rows,:]
+                
+                # 8
+                if ((spins[0] == spins[2]) and (spins[1] == spins[3])):
+                    rearranged_rows = q_3*self._N**2 + q_rearranged*self._N + q_1
+                    R += R_copy[rearranged_rows,:]
+                    
+                # 9
+                if ((spins[0] == spins[2]) and (spins[2] == spins[3]) and (spins[0] == spins[3])):
+                    rearranged_rows = q_1*self._N**2 + q_rearranged*self._N + q_2
+                    R += R_copy[rearranged_rows,:]
+                
+                # 10
+                if (spins[0] == spins[2]):
+                    rearranged_rows = q_1*self._N**2 + q_rearranged*self._N + q_3
+                    R -= R_copy[rearranged_rows,:]
+                    
+                # 11:
+                if (spins[0] == spins[1] == spins[2] == spins[3]):
+                    rearranged_rows = q_3*self._N**2 + q_rearranged*self._N + q_2
+                    R -= R_copy[rearranged_rows,:]
+                
+                # 12
+                if ((spins[0] == spins[2]) and (spins[0] == spins[1]) and (spins[1] == spins[2])):
+                    rearranged_rows = q_2*self._N**2 + q_rearranged*self._N + q_3
+                    R += R_copy[rearranged_rows,:]
+                
+                # 13
+                if ((spins[0] == spins[1]) and (spins[1] == spins[3]) and (spins[0] == spins[3])):
+                    rearranged_rows = q_rearranged*self._N**2 + q_2*self._N + q_1
+                    R += R_copy[rearranged_rows,:]
+                    
+                # 14
+                if (spins[0] == spins[1] == spins[2] == spins[3]):
+                    rearranged_rows = q_rearranged*self._N**2 + q_3*self._N + q_1
+                    R -= R_copy[rearranged_rows,:]
+                    
+                # 15
+                if (spins[0] == spins[1] == spins[2] == spins[3]):
+                    rearranged_rows = q_rearranged*self._N**2 + q_1*self._N + q_2
+                    R -= R_copy[rearranged_rows,:]
+                    
+                # 16
+                if ((spins[0] == spins[1]) and (spins[1] == spins[2]) and (spins[0] == spins[2])):
+                    rearranged_rows = q_rearranged*self._N**2 + q_1*self._N + q_3
+                    R += R_copy[rearranged_rows,:]
+                    
+                # 17
+                if ((spins[0] == spins[1]) and (spins[2] == spins[3])):
+                    rearranged_rows = q_rearranged*self._N**2 + q_3*self._N + q_2
+                    R += R_copy[rearranged_rows,:]
+                    
+                # 18
+                if (spins[0] == spins[1]):
+                    rearranged_rows = q_rearranged*self._N**2 + q_2*self._N + q_3
+                    R -= R_copy[rearranged_rows,:]
+                    
+                # 19
+                if (spins[1] == spins[3]):
+                    rearranged_rows = q_3*self._N**2 + q_2*self._N + q_1
+                    R -= R_copy[rearranged_rows,:]
+                    
+                # 20
+                if ((spins[1] == spins[3]) and (spins[1] == spins[2]) and (spins[2] == spins[3])):
+                    rearranged_rows = q_2*self._N**2 + q_3*self._N + q_1
+                    R += R_copy[rearranged_rows,:]
+                    
+                # 21
+                if ((spins[1] == spins[2]) and (spins[2] == spins[3]) and (spins[1] == spins[3])):
+                    rearranged_rows = q_3*self._N**2 + q_1*self._N + q_2
+                    R += R_copy[rearranged_rows,:]
+                    
+                # 22
+                if (spins[1] == spins[2]):
+                    rearranged_rows = q_2*self._N**2 + q_1*self._N + q_3
+                    R -= R_copy[rearranged_rows,:]
+                    
+                # 23
+                if (spins[2] == spins[3]):
+                    rearranged_rows = q_1*self._N**2 + q_3*self._N + q_2
+                    R -= R_copy[rearranged_rows,:]
+                        
+            # Remove duplicate (non-independent) states and those forbidden by the PEP
+            # Assume only one flat band for now
+            independent_states = []
+            allowed_indices = []
+            index = 0
+            for k_1 in range(self._N):
+                for k_2 in range(self._N):
+                    for k_3 in range(self._N):
+                        # Sorting removes (some) dependence on operator order
+                        momentum_state = np.array([(p + k_1 + k_2 + k_3)%self._N, (-k_1)%self._N, (-k_2)%self._N, (-k_3)%self._N])
+                        sorted_indices = momentum_state.argsort()
+                        momentum_state = momentum_state[sorted_indices]
+                        spin_state = spins[sorted_indices]
+                            
+                        unique_momenta = np.unique(momentum_state)
+                        # Everything is automatically sorted if all momenta are different;
+                        # check otherwise that spins are also sorted
+                        if (len(unique_momenta) != 4):
+                            current = 0
+                            for momentum in unique_momenta:
+                                count = sum(momentum_state == momentum)
+                                spin_state[current:current+count] = np.sort(spin_state[current:current+count])
+                                current += count
+                        
+                        state = list(momentum_state) + list(spin_state)
+                        if state in independent_states:
+                            # This state is not independent (it has already been counted)
+                            independent = False
+                        else:
+                            independent_states.append(state)
+                            independent = True
+                            
+                        # Check if the state is forbidden by the PEP (no need to check
+                        # if the state is already non-independent)
+                        if (independent == True):
+                            # This is probably not the fastest way to check;
+                            # come back to this later
+                            if (np.allclose(0., R[[index],:].toarray())):
+                                # Disallowed by the PEP if True
+                                allowed = False
+                            else:
+                                allowed = True
+                        else:
+                            allowed = False
+                            
+                        if ((independent == True) and (allowed == True)):
+                            allowed_indices.append(True)
+                        else:
+                            allowed_indices.append(False)
+                            
+                        index += 1
+                        
+            # Project down R
+            R = R[allowed_indices,:][:,allowed_indices]
+            
+            # Find only some of the lowest energies (eigenvalues)
+            energies = sparse.linalg.eigsh(R, k=num_eigenvalues, which="SA", return_eigenvectors=False)
+            self._four_electrons_energies.append(energies)
+            
+            print("p = %.i complete" % (p))
+            
+        if (plot==True):
             scaled_k = np.linspace(-np.pi, np.pi, self._N + 1)[:-1]
             scaled_k = np.roll(scaled_k, -(self._N // 2))
             for i, k_value in enumerate(scaled_k):
