@@ -396,8 +396,6 @@ class excitation_solver:
         # Find only some of the lowest energies (eigenvalues)
         four_electrons_energies = sparse.linalg.eigsh(R, k=num_eigenvalues, which="SA", return_eigenvectors=False)
         
-        print("p = %.i complete" % (p))
-        
         # Change file location to wherever is needed
         np.savetxt("Quarton Multiprocess Energies/%.i_energies.csv" % (p), four_electrons_energies)
             
