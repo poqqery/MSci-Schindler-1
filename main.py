@@ -7,7 +7,7 @@ Created on Sat Oct 21 01:29:11 2023
 
 import numpy as np
 import matplotlib.pyplot as plt
-from solver import excitation_solver
+from solver_multiband import excitation_solver
 from copy import deepcopy
 
 def update_params_sim():
@@ -55,11 +55,17 @@ def dimerized_SSH(k, spin):
 
 def SSH(k, spin):
     
-    return np.array([[0.j, 0. + np.exp(-1.j * k)], [0. + np.exp(1.j * k), 0.]])
+    return -1. * np.sin(k) * sigma_3 + np.cos(k) * sigma_1
 
-N = 10
+def SSH_triplet(k, spin):
+    
+    return np.array([[np.cos(k), (1+np.exp(1.j*k))/np.sqrt(2), -1.j*np.sin(k)],\
+                     [(1.+np.exp(-1.j*k))/np.sqrt(2), 0., (-1.+np.exp(-1.j*k))/np.sqrt(2)],\
+                     [1.j*np.sin(k), (-1.+np.exp(1.j*k))/np.sqrt(2), -np.cos(k)]], dtype="complex128")
 
-test = excitation_solver(1., dimerized_SSH, 1., N)
+N = 16
+
+test = excitation_solver(1., SSH_triplet, 1., N)
 
 #%% Overlaying the minimum energies of two independent, spin-zero Cooper pairs
 # onto a 4-particle spin-zero spectrum
@@ -91,7 +97,7 @@ plt.plot(np.array([-np.pi, np.pi]), 2.*1.*0.5*np.ones(2), "--", color="black", l
     
 plt.grid(True)
 plt.legend()
-plt.title("4 Electrons Excitation Spectrum", fontsize=18)
+plt.title("Excitation Spectrum", fontsize=18)
 plt.xlabel(r"$pa$")
 plt.ylabel("Energy")
 plt.show()
