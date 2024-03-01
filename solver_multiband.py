@@ -579,13 +579,13 @@ class excitation_solver:
         const_n = self._N**2 * self._N_f
         const_l = self._N**2
         
-        m = np.concatenate([i*np.ones(const_m, dtype="int32") for i in range(self._N_f)])
-        n = np.concatenate([i*np.ones(const_n, dtype="int32") for i in range(self._N_f)] * self._N_f)
-        l = np.concatenate([i*np.ones(const_l, dtype="int32") for i in range(self._N_f)] * self._N_f**2)
-        q_1 = np.concatenate([i*np.ones(self._N) for i in range(self._N)] * self._N_f**3)
-        q_2 = np.concatenate([np.arange(self._N)] * self._N * self._N_f**3)
+        m = np.concatenate([i*np.ones(const_m, dtype="int32") for i in range(self._N_f)]).astype("int32")
+        n = np.concatenate([i*np.ones(const_n, dtype="int32") for i in range(self._N_f)] * self._N_f).astype("int32")
+        l = np.concatenate([i*np.ones(const_l, dtype="int32") for i in range(self._N_f)] * self._N_f**2).astype("int32")
+        q_1 = np.concatenate([i*np.ones(self._N) for i in range(self._N)] * self._N_f**3).astype("int32")
+        q_2 = np.concatenate([np.arange(self._N)] * self._N * self._N_f**3).astype("int32")
         
-        self._energies = np.zeros((self._N, num_eigenvalues))
+        self._energies = []
         
         # Sparse matrices; do one p at a time to prevent RAM destruction
         for p in range(self._N):
@@ -595,49 +595,38 @@ class excitation_solver:
             for row in range(R_dimensionality):
                 # Only fill the diagonal and upper-triangular half, then use
                 # Hermitianity to fill the lower triangular half
+                # Find row state
+                m_row = m[row]
+                n_row = n[row]
+                l_row = l[row]
+                k_1_row = q_1[row]
+                k_2_row = q_2[row]
                 for col in range(row, R_dimensionality):
-                    row_copy = row * 1
-                    col_copy = col * 1
-                    # Find row state
-                    m_prime = row_copy // const_m
-                    row_copy -= m_prime * const_m
-                    n_prime = row_copy // const_n
-                    row_copy -= n_prime * const_n
-                    l_prime = row_copy // const_l
-                    row_copy -= l_prime * const_l
-                    k_1_prime = row_copy // self._N
-                    row_copy -= k_1_prime * self._N
-                    k_2_prime = row_copy
-                    
                     # Find column state
-                    m = col_copy // const_m
-                    col_copy -= m * const_m
-                    n = col_copy // const_n
-                    col_copy -= n * const_n
-                    l = col_copy // const_l
-                    col_copy -= l * const_l
-                    k_1 = col_copy // self._N
-                    col_copy -= k_1 * self._N
-                    k_2 = col_copy
+                    m_col = m[col]
+                    n_col = n[col]
+                    l_col = l[col]
+                    k_1_col = q_1[col]
+                    k_2_col = q_2[col]
                     
                     R_sum = 0.j
-                    if (((k_1_prime+k_2_prime)%self._N == (k_1+k_2)%self._N) and (m_prime == m)):
-                        R_sum += np.sum(np.conj(reduced_eigenvectors[spins[1],(-k_1_prime)%self._N,:,n_prime]) *\
-                            reduced_eigenvectors[spins[1],(-k_1)%self._N,:,n] *\
-                            np.conj(reduced_eigenvectors[spins[2],(-k_2_prime)%self._N,:,l_prime]) *\
-                            reduced_eigenvectors[spins[2],(-k_2)%self._N,:,l]) * s[1] * s[2]
+                    if (((k_1_row+k_2_row)%self._N == (k_1_col+k_2_col)%self._N) and (m_row == m_col)):
+                        R_sum += np.sum(np.conj(reduced_eigenvectors[spins[1],(-k_1_row)%self._N,:,n_row]) *\
+                            reduced_eigenvectors[spins[1],(-k_1_col)%self._N,:,n_col] *\
+                            np.conj(reduced_eigenvectors[spins[2],(-k_2_row)%self._N,:,l_row]) *\
+                            reduced_eigenvectors[spins[2],(-k_2_col)%self._N,:,l_col]) * s[1] * s[2]
                     
-                    if ((k_1_prime == k_1) and (n_prime == n)):
-                        R_sum += np.sum(np.conj(reduced_eigenvectors[spins[0],(p+k_1+k_2_prime)%self._N,:,m_prime]) *\
-                            reduced_eigenvectors[spins[0],(p+k_1+k_2)%self._N,:,m] *\
-                            np.conj(reduced_eigenvectors[spins[2],(-k_2_prime)%self._N,:,l_prime]) *\
-                            reduced_eigenvectors[spins[2],(-k_2)%self._N,:,l]) * s[0] * s[2]
+                    if ((k_1_row == k_1_col) and (n_row == n_col)):
+                        R_sum += np.sum(np.conj(reduced_eigenvectors[spins[0],(p+k_1_col+k_2_row)%self._N,:,m_row]) *\
+                            reduced_eigenvectors[spins[0],(p+k_1_col+k_2_col)%self._N,:,m_col] *\
+                            np.conj(reduced_eigenvectors[spins[2],(-k_2_row)%self._N,:,l_row]) *\
+                            reduced_eigenvectors[spins[2],(-k_2_col)%self._N,:,l_col]) * s[0] * s[2]
                             
-                    if ((k_2_prime == k_2) and (l_prime == l)):
-                        R_sum += np.sum(np.conj(reduced_eigenvectors[spins[0],(p+k_1_prime+k_2)%self._N,:,m_prime]) *\
-                            reduced_eigenvectors[spins[0],(p+k_1+k_2)%self._N,:,m] *\
-                            np.conj(reduced_eigenvectors[spins[1],(-k_1_prime)%self._N,:,n_prime]) *\
-                            reduced_eigenvectors[spins[1],(-k_1)%self._N,:,n]) * s[0] * s[1]
+                    if ((k_2_row == k_2_col) and (l_row == l_col)):
+                        R_sum += np.sum(np.conj(reduced_eigenvectors[spins[0],(p+k_1_row+k_2_col)%self._N,:,m_row]) *\
+                            reduced_eigenvectors[spins[0],(p+k_1_col+k_2_col)%self._N,:,m_col] *\
+                            np.conj(reduced_eigenvectors[spins[1],(-k_1_row)%self._N,:,n_row]) *\
+                            reduced_eigenvectors[spins[1],(-k_1_col)%self._N,:,n_col]) * s[0] * s[1]
                             
                     if (R_sum != 0.j):
                         # Specify an explicit element only if non-zero
@@ -742,11 +731,13 @@ class excitation_solver:
             # Project down R
             R = R[allowed_indices,:][:,allowed_indices]
             energies = self._mod_U * sparse.linalg.eigsh(R, k=num_eigenvalues, which="SA", return_eigenvectors=False)
-            self._energies[p] += energies
+            #energies = self._mod_U * np.linalg.eigvalsh(R)
+            self._energies.append(energies)
             
         if (plot == True):
-            for i in range(num_eigenvalues):
-                plt.plot(self._k_samples * self._a, self._energies[:,i], ".", color="blue")
+            for i in range(len(self._k_samples)):
+                length = len(self._energies[i])
+                plt.plot(np.ones(length)*self._k_samples[i] * self._a, self._energies[i], ".", color="blue")
                 
             plt.plot(np.array([0., 2.*np.pi]), 1.5 * self._mod_U * self._epsilon * np.ones(2), "--", color="black", label=r"$\frac{3\epsilon |U|}{2}$")
             
